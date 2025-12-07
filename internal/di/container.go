@@ -8,10 +8,10 @@ import (
 	"browser-agent/internal/application/port/input"
 	"browser-agent/internal/application/port/output"
 	"browser-agent/internal/application/service"
-	"browser-agent/internal/application/usecase/execute_task"
 	"browser-agent/internal/infrastructure/browser/rod"
 	"browser-agent/internal/infrastructure/llm/openrouter"
 	"browser-agent/internal/infrastructure/logger"
+	"browser-agent/internal/usecase/execute_task"
 )
 
 type Container struct {
