@@ -48,11 +48,11 @@ func (uc *UseCase) Execute(ctx context.Context, task string) (*input.ExecuteResu
 	for iteration := 1; iteration <= maxIterations; iteration++ {
 		uc.logger.Debug("Starting iteration", "iteration", iteration)
 
-		resp, err := uc.llm.Chat(ctx, output.ChatRequest{
+		resp, err := uc.llm.ChatStream(ctx, output.ChatRequest{
 			Messages:    messages,
 			Tools:       toolDefs,
 			Temperature: 0.0,
-		})
+		}, nil)
 		if err != nil {
 			return nil, fmt.Errorf("llm request failed: %w", err)
 		}

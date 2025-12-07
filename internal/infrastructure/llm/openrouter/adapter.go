@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 
 	"browser-agent/internal/application/port/output"
 	"browser-agent/internal/domain/entity"
@@ -143,15 +144,31 @@ func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatReque
 	toolCallsMap := make(map[int]*entity.ToolCall)
 	var thinkingContent string
 	var textContent string
+	chunkCount := 0
+
+	if a.logger != nil {
+		a.logger.Debug("Starting stream reception")
+	}
 
 	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context canceled: %w", ctx.Err())
+		default:
+		}
+
 		chunk, err := stream.Recv()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				if a.logger != nil {
+					a.logger.Debug("Stream completed", "chunks", chunkCount, "thinkingLen", len(thinkingContent), "textLen", len(textContent))
+				}
 				break
 			}
 			return nil, fmt.Errorf("stream recv error: %w", err)
 		}
+
+		chunkCount++
 
 		if len(chunk.Choices) == 0 {
 			continue
@@ -173,6 +190,9 @@ func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatReque
 		}
 
 		for _, tc := range delta.ToolCalls {
+			if tc.Index == nil {
+				continue
+			}
 			idx := *tc.Index
 			if existing, ok := toolCallsMap[idx]; ok {
 				existing.Arguments += tc.Function.Arguments
@@ -207,14 +227,19 @@ func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatReque
 		finalMessage.Content = textContent
 	}
 
-	for i := 0; i < len(toolCallsMap); i++ {
-		if tc, ok := toolCallsMap[i]; ok {
-			finalMessage.ToolCalls = append(finalMessage.ToolCalls, *tc)
-			finalMessage.ContentBlocks = append(finalMessage.ContentBlocks, entity.ContentBlock{
-				Type:    entity.ContentTypeToolUse,
-				ToolUse: tc,
-			})
-		}
+	indices := make([]int, 0, len(toolCallsMap))
+	for idx := range toolCallsMap {
+		indices = append(indices, idx)
+	}
+	sort.Ints(indices)
+
+	for _, idx := range indices {
+		tc := toolCallsMap[idx]
+		finalMessage.ToolCalls = append(finalMessage.ToolCalls, *tc)
+		finalMessage.ContentBlocks = append(finalMessage.ContentBlocks, entity.ContentBlock{
+			Type:    entity.ContentTypeToolUse,
+			ToolUse: tc,
+		})
 	}
 
 	if onChunk != nil {
@@ -245,14 +270,16 @@ func convertMessages(messages []entity.Message) []openai.ChatCompletionMessage {
 		}
 
 		if len(msg.ContentBlocks) > 0 {
-			var textContent string
+			var fullContent string
 			for _, block := range msg.ContentBlocks {
-				if block.Type == entity.ContentTypeText {
-					textContent += block.Text
+				if block.Type == entity.ContentTypeThinking && block.Thinking != "" {
+					fullContent += "<thinking>\n" + block.Thinking + "\n</thinking>\n"
+				} else if block.Type == entity.ContentTypeText {
+					fullContent += block.Text
 				}
 			}
-			if textContent != "" {
-				oaiMsg.Content = textContent
+			if fullContent != "" {
+				oaiMsg.Content = fullContent
 			}
 		}
 

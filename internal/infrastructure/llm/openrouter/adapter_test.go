@@ -79,7 +79,7 @@ func TestConvertMessages_WithContentBlocks(t *testing.T) {
 	assert.Equal(t, "user", result[0].Role)
 	assert.Equal(t, "Hello", result[0].Content)
 	assert.Equal(t, "assistant", result[1].Role)
-	assert.Equal(t, "Hi there", result[1].Content)
+	assert.Equal(t, "<thinking>\nLet me think about this...\n</thinking>\nHi there", result[1].Content)
 }
 
 func TestConvertMessages_EmptyContentWithBlocks(t *testing.T) {
