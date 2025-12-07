@@ -126,6 +126,19 @@ func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatReque
 	messages := convertMessages(req.Messages)
 	tools := convertTools(req.Tools)
 
+	if a.logger != nil {
+		totalChars := 0
+		for _, msg := range messages {
+			totalChars += len(msg.Content)
+		}
+		a.logger.Debug("Creating chat completion stream",
+			"model", a.model,
+			"messagesCount", len(messages),
+			"toolsCount", len(tools),
+			"temperature", req.Temperature,
+			"totalChars", totalChars)
+	}
+
 	stream, err := a.client.CreateChatCompletionStream(ctx, openai.ChatCompletionRequest{
 		Model:       a.model,
 		Messages:    messages,
@@ -135,6 +148,9 @@ func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatReque
 		Stream:      true,
 	})
 	if err != nil {
+		if a.logger != nil {
+			a.logger.Error("Failed to create stream", "error", err)
+		}
 		return nil, fmt.Errorf("chat stream failed: %w", err)
 	}
 	defer stream.Close()
@@ -164,6 +180,9 @@ func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatReque
 					a.logger.Debug("Stream completed", "chunks", chunkCount, "thinkingLen", len(thinkingContent), "textLen", len(textContent))
 				}
 				break
+			}
+			if a.logger != nil {
+				a.logger.Error("Stream recv error", "error", err, "chunks", chunkCount, "errorType", fmt.Sprintf("%T", err))
 			}
 			return nil, fmt.Errorf("stream recv error: %w", err)
 		}
@@ -213,6 +232,9 @@ func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatReque
 	}
 
 	if thinkingContent != "" {
+		if a.logger != nil {
+			a.logger.Debug("Received thinking content", "length", len(thinkingContent))
+		}
 		finalMessage.ContentBlocks = append(finalMessage.ContentBlocks, entity.ContentBlock{
 			Type:     entity.ContentTypeThinking,
 			Thinking: thinkingContent,
@@ -220,11 +242,21 @@ func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatReque
 	}
 
 	if textContent != "" {
+		if a.logger != nil {
+			a.logger.Debug("Received text content", "length", len(textContent))
+		}
 		finalMessage.ContentBlocks = append(finalMessage.ContentBlocks, entity.ContentBlock{
 			Type: entity.ContentTypeText,
 			Text: textContent,
 		})
 		finalMessage.Content = textContent
+	}
+
+	if a.logger != nil {
+		a.logger.Debug("Final message assembled",
+			"contentBlocksCount", len(finalMessage.ContentBlocks),
+			"toolCallsCount", len(finalMessage.ToolCalls),
+			"contentLength", len(finalMessage.Content))
 	}
 
 	indices := make([]int, 0, len(toolCallsMap))
@@ -274,7 +306,7 @@ func convertMessages(messages []entity.Message) []openai.ChatCompletionMessage {
 			for _, block := range msg.ContentBlocks {
 				if block.Type == entity.ContentTypeThinking && block.Thinking != "" {
 					fullContent += "<thinking>\n" + block.Thinking + "\n</thinking>\n"
-				} else if block.Type == entity.ContentTypeText {
+				} else if block.Type == entity.ContentTypeText && block.Text != "" {
 					fullContent += block.Text
 				}
 			}

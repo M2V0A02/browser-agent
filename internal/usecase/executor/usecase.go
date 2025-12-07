@@ -54,7 +54,15 @@ func (uc *UseCase) Execute(ctx context.Context, task string) (*input.ExecuteResu
 			Temperature: 0.0,
 		}, nil)
 		if err != nil {
-			return nil, fmt.Errorf("llm request failed: %w", err)
+			uc.logger.Warn("Stream failed, falling back to regular chat", "error", err)
+			resp, err = uc.llm.Chat(ctx, output.ChatRequest{
+				Messages:    messages,
+				Tools:       toolDefs,
+				Temperature: 0.0,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("llm request failed: %w", err)
+			}
 		}
 
 		messages = append(messages, resp.Message)
