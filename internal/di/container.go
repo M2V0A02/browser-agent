@@ -12,15 +12,17 @@ import (
 	"browser-agent/internal/infrastructure/llm/openrouter"
 	"browser-agent/internal/infrastructure/logger"
 	"browser-agent/internal/infrastructure/prompts"
+	"browser-agent/internal/infrastructure/userinteraction"
 	"browser-agent/internal/usecase/executor"
 )
 
 type Container struct {
-	Browser      output.BrowserPort
-	LLM          output.LLMPort
-	Logger       output.LoggerPort
-	Tools        output.ToolRegistry
-	TaskExecutor input.TaskExecutor
+	Browser         output.BrowserPort
+	LLM             output.LLMPort
+	Logger          output.LoggerPort
+	UserInteraction output.UserInteractionPort
+	Tools           output.ToolRegistry
+	TaskExecutor    input.TaskExecutor
 }
 
 type Config struct {
@@ -48,8 +50,11 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 	llmCfg.Logger = log
 	llm := openrouter.NewOpenRouterAdapter(llmCfg)
 
+	userInteraction := userinteraction.NewConsoleUserInteraction()
+
 	tools := service.NewToolRegistry()
 	registerBrowserTools(tools, browser, log)
+	registerUserInteractionTools(tools, userInteraction, log)
 
 	systemPrompt := cfg.SystemPrompt
 	if systemPrompt == "" {
@@ -59,11 +64,12 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 	uc := executor.New(llm, tools, log, systemPrompt)
 
 	return &Container{
-		Browser:      browser,
-		LLM:          llm,
-		Logger:       log,
-		Tools:        tools,
-		TaskExecutor: uc,
+		Browser:         browser,
+		LLM:             llm,
+		Logger:          log,
+		UserInteraction: userInteraction,
+		Tools:           tools,
+		TaskExecutor:    uc,
 	}, nil
 }
 
@@ -85,4 +91,9 @@ func registerBrowserTools(registry *service.ToolRegistryImpl, browser output.Bro
 	registry.Register(tool.NewExtractTool(browser, log))
 	registry.Register(tool.NewUISummaryTool(browser, log))
 	registry.Register(tool.NewPressEnterTool(browser, log))
+}
+
+func registerUserInteractionTools(registry *service.ToolRegistryImpl, userInteraction output.UserInteractionPort, log output.LoggerPort) {
+	registry.Register(tool.NewAskQuestionTool(userInteraction, log))
+	registry.Register(tool.NewWaitUserActionTool(userInteraction, log))
 }

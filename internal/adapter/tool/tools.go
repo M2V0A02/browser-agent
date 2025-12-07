@@ -290,3 +290,82 @@ func (t *PressEnterTool) Execute(ctx context.Context, args string) (string, erro
 	}
 	return "Enter pressed", nil
 }
+
+type AskQuestionTool struct {
+	userInteraction output.UserInteractionPort
+	logger          output.LoggerPort
+}
+
+func NewAskQuestionTool(userInteraction output.UserInteractionPort, logger output.LoggerPort) *AskQuestionTool {
+	return &AskQuestionTool{userInteraction: userInteraction, logger: logger}
+}
+
+func (t *AskQuestionTool) Name() string { return "ask_question" }
+func (t *AskQuestionTool) Description() string {
+	return "Ask the user a question and wait for their response. Use this when you need information from the user to proceed with the task, such as credentials, preferences, or clarifications. The tool will pause execution until the user provides an answer. Returns the user's text response."
+}
+func (t *AskQuestionTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"question": map[string]interface{}{
+				"type":        "string",
+				"description": "The question to ask the user",
+			},
+		},
+		"required": []string{"question"},
+	}
+}
+
+func (t *AskQuestionTool) Execute(ctx context.Context, args string) (string, error) {
+	var input struct {
+		Question string `json:"question"`
+	}
+	if err := json.Unmarshal([]byte(args), &input); err != nil {
+		return "", err
+	}
+	answer, err := t.userInteraction.AskQuestion(ctx, input.Question)
+	if err != nil {
+		return "", err
+	}
+	return answer, nil
+}
+
+type WaitUserActionTool struct {
+	userInteraction output.UserInteractionPort
+	logger          output.LoggerPort
+}
+
+func NewWaitUserActionTool(userInteraction output.UserInteractionPort, logger output.LoggerPort) *WaitUserActionTool {
+	return &WaitUserActionTool{userInteraction: userInteraction, logger: logger}
+}
+
+func (t *WaitUserActionTool) Name() string { return "wait_user_action" }
+func (t *WaitUserActionTool) Description() string {
+	return "Pause execution and wait for the user to complete a manual action in the browser. Use this when you need the user to handle tasks that cannot be automated, such as solving CAPTCHA challenges, completing 2FA authentication, manual login steps, or any other human verification. Provide a clear message explaining what action the user needs to perform. The tool will wait until the user presses Enter to confirm completion."
+}
+func (t *WaitUserActionTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"message": map[string]interface{}{
+				"type":        "string",
+				"description": "Instructions for the user explaining what action they need to perform",
+			},
+		},
+		"required": []string{"message"},
+	}
+}
+
+func (t *WaitUserActionTool) Execute(ctx context.Context, args string) (string, error) {
+	var input struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(args), &input); err != nil {
+		return "", err
+	}
+	if err := t.userInteraction.WaitForUserAction(ctx, input.Message); err != nil {
+		return "", err
+	}
+	return "User confirmed action completion", nil
+}
