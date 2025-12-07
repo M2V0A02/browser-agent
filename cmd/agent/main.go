@@ -31,7 +31,6 @@ func main() {
 		OpenRouterAPIKey: envService.MustGet("OPENROUTER_API_KEY"),
 		OpenRouterModel:  envService.MustGet("OPENROUTER_MODEL_NAME"),
 		BrowserHeadless:  false,
-		TaskName:         task,
 	})
 	if err != nil {
 		log.Fatalf("Ошибка инициализации: %v", err)

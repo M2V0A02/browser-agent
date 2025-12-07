@@ -2,7 +2,9 @@ package openrouter
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 
 	"browser-agent/internal/application/port/output"
 	"browser-agent/internal/domain/entity"
@@ -92,7 +94,10 @@ func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatReque
 	for {
 		chunk, err := stream.Recv()
 		if err != nil {
-			break
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("stream recv error: %w", err)
 		}
 
 		if len(chunk.Choices) == 0 {

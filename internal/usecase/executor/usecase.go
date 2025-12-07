@@ -23,27 +23,17 @@ type UseCase struct {
 	systemPrompt string
 }
 
-type Config struct {
-	SystemPrompt string
-}
-
-func DefaultConfig() Config {
-	return Config{
-		SystemPrompt: "Ты — автономный браузерный агент. Думай шаг за шагом и используй инструменты.",
-	}
-}
-
 func New(
 	llm output.LLMPort,
 	tools output.ToolRegistry,
 	logger output.LoggerPort,
-	cfg Config,
+	systemPrompt string,
 ) *UseCase {
 	return &UseCase{
 		llm:          llm,
 		tools:        tools,
 		logger:       logger,
-		systemPrompt: cfg.SystemPrompt,
+		systemPrompt: systemPrompt,
 	}
 }
 
@@ -58,11 +48,11 @@ func (uc *UseCase) Execute(ctx context.Context, task string) (*input.ExecuteResu
 	for iteration := 1; iteration <= maxIterations; iteration++ {
 		uc.logger.Debug("Starting iteration", "iteration", iteration)
 
-		resp, err := uc.llm.ChatStream(ctx, output.ChatRequest{
+		resp, err := uc.llm.Chat(ctx, output.ChatRequest{
 			Messages:    messages,
 			Tools:       toolDefs,
 			Temperature: 0.0,
-		}, nil)
+		})
 		if err != nil {
 			return nil, fmt.Errorf("llm request failed: %w", err)
 		}

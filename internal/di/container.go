@@ -11,6 +11,7 @@ import (
 	"browser-agent/internal/infrastructure/browser/rod"
 	"browser-agent/internal/infrastructure/llm/openrouter"
 	"browser-agent/internal/infrastructure/logger"
+	"browser-agent/internal/infrastructure/prompts"
 	"browser-agent/internal/usecase/executor"
 )
 
@@ -26,7 +27,7 @@ type Config struct {
 	OpenRouterAPIKey string
 	OpenRouterModel  string
 	BrowserHeadless  bool
-	TaskName         string
+	SystemPrompt     string
 }
 
 func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
@@ -49,12 +50,12 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 	tools := service.NewToolRegistry()
 	registerBrowserTools(tools, browser, log)
 
-	uc := executor.New(
-		llm,
-		tools,
-		log,
-		executor.DefaultConfig(),
-	)
+	systemPrompt := cfg.SystemPrompt
+	if systemPrompt == "" {
+		systemPrompt = prompts.DefaultSystemPrompt
+	}
+
+	uc := executor.New(llm, tools, log, systemPrompt)
 
 	return &Container{
 		Browser:      browser,
