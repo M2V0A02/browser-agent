@@ -18,8 +18,10 @@ func NewNavigateTool(browser output.BrowserPort, logger output.LoggerPort) *Navi
 	return &NavigateTool{browser: browser, logger: logger}
 }
 
-func (t *NavigateTool) Name() string        { return "navigate" }
-func (t *NavigateTool) Description() string { return "Navigates browser to URL" }
+func (t *NavigateTool) Name() string { return "navigate" }
+func (t *NavigateTool) Description() string {
+	return "Navigate browser to a URL. Use this to open web pages or follow links. Accepts full URLs (https://example.com) or partial URLs. Returns the final URL after navigation (may differ due to redirects). Use this as the first step when starting a new task or when you need to go to a different website."
+}
 func (t *NavigateTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
@@ -55,8 +57,10 @@ func NewClickTool(browser output.BrowserPort, logger output.LoggerPort) *ClickTo
 	return &ClickTool{browser: browser, logger: logger}
 }
 
-func (t *ClickTool) Name() string        { return "click" }
-func (t *ClickTool) Description() string { return "Clicks element by selector" }
+func (t *ClickTool) Name() string { return "click" }
+func (t *ClickTool) Description() string {
+	return "Click on a page element using CSS selector or XPath. Use this to interact with buttons, links, checkboxes, or any clickable element. First use ui_summary to get available selectors. Supports both CSS selectors (e.g., '#submit-btn', '.menu-item') and XPath (e.g., '//button[text()=\"Submit\"]'). Returns success message or error if element not found."
+}
 func (t *ClickTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
@@ -92,8 +96,10 @@ func NewFillTool(browser output.BrowserPort, logger output.LoggerPort) *FillTool
 	return &FillTool{browser: browser, logger: logger}
 }
 
-func (t *FillTool) Name() string        { return "fill" }
-func (t *FillTool) Description() string { return "Fills input field with text" }
+func (t *FillTool) Name() string { return "fill" }
+func (t *FillTool) Description() string {
+	return "Fill text into an input field or textarea using CSS selector. Use this to enter data into forms, search boxes, or text areas. First use ui_summary to find the correct selector. Clears existing content before filling. For submitting forms, use press_enter after filling or click on submit button."
+}
 func (t *FillTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
@@ -134,8 +140,10 @@ func NewScrollTool(browser output.BrowserPort, logger output.LoggerPort) *Scroll
 	return &ScrollTool{browser: browser, logger: logger}
 }
 
-func (t *ScrollTool) Name() string        { return "scroll" }
-func (t *ScrollTool) Description() string { return "Scrolls page in direction" }
+func (t *ScrollTool) Name() string { return "scroll" }
+func (t *ScrollTool) Description() string {
+	return "Scroll the page in specified direction. Directions: 'up' (scroll up one viewport), 'down' (scroll down one viewport), 'top' (scroll to page top), 'bottom' (scroll to page bottom). Use this to reveal content below the fold, navigate long pages, or before taking screenshots of different page sections. After scrolling, use ui_summary to see newly visible elements."
+}
 func (t *ScrollTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
@@ -172,8 +180,10 @@ func NewScreenshotTool(browser output.BrowserPort, logger output.LoggerPort) *Sc
 	return &ScreenshotTool{browser: browser, logger: logger}
 }
 
-func (t *ScreenshotTool) Name() string        { return "screenshot" }
-func (t *ScreenshotTool) Description() string { return "Takes screenshot of page" }
+func (t *ScreenshotTool) Name() string { return "screenshot" }
+func (t *ScreenshotTool) Description() string {
+	return "Capture a screenshot of the current visible viewport. Returns base64-encoded image data URL. Use this when you need visual confirmation of page state, to verify UI appearance, or to show results to user. The screenshot only captures the visible portion - use scroll to capture different sections. Useful after navigation or interactions to confirm success."
+}
 func (t *ScreenshotTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type":       "object",
@@ -200,8 +210,10 @@ func NewExtractTool(browser output.BrowserPort, logger output.LoggerPort) *Extra
 	return &ExtractTool{browser: browser, logger: logger}
 }
 
-func (t *ExtractTool) Name() string        { return "extract" }
-func (t *ExtractTool) Description() string { return "Extracts text from page" }
+func (t *ExtractTool) Name() string { return "extract" }
+func (t *ExtractTool) Description() string {
+	return "Extract the full HTML content of the current page. Returns cleaned HTML with preserved structure. Use this when you need to analyze page structure, extract specific data, or process HTML content. For interactive elements info, use ui_summary instead. For visual verification, use screenshot. This returns raw HTML which may be large."
+}
 func (t *ExtractTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type":       "object",
@@ -227,8 +239,10 @@ func NewUISummaryTool(browser output.BrowserPort, logger output.LoggerPort) *UIS
 	return &UISummaryTool{browser: browser, logger: logger}
 }
 
-func (t *UISummaryTool) Name() string        { return "ui_summary" }
-func (t *UISummaryTool) Description() string { return "Returns list of UI elements" }
+func (t *UISummaryTool) Name() string { return "ui_summary" }
+func (t *UISummaryTool) Description() string {
+	return "Get structured list of interactive UI elements on current page. Returns JSON array with buttons, links, inputs, and their selectors. Use this BEFORE click or fill operations to find correct selectors. Shows element type, text content, and CSS selector. This is your primary tool for understanding what elements are available to interact with. Call after navigation or scroll to see available options."
+}
 func (t *UISummaryTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type":       "object",
@@ -258,8 +272,10 @@ func NewPressEnterTool(browser output.BrowserPort, logger output.LoggerPort) *Pr
 	return &PressEnterTool{browser: browser, logger: logger}
 }
 
-func (t *PressEnterTool) Name() string        { return "press_enter" }
-func (t *PressEnterTool) Description() string { return "Presses Enter key" }
+func (t *PressEnterTool) Name() string { return "press_enter" }
+func (t *PressEnterTool) Description() string {
+	return "Press the Enter key on the keyboard. Use this to submit forms after filling input fields, trigger search actions, or confirm inputs. Common workflow: fill input field with search query, then press_enter to submit. Alternative to clicking submit buttons when Enter key submission is supported."
+}
 func (t *PressEnterTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type":       "object",
