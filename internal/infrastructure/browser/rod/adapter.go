@@ -362,6 +362,31 @@ func (b *BrowserAdapter) GetPageContent(ctx context.Context) (*entity.PageConten
 	}, nil
 }
 
+func (b *BrowserAdapter) GetPageText(ctx context.Context) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if err := b.checkState(); err != nil {
+		return "", err
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, b.timeout)
+	defer cancel()
+
+	result, err := b.page.Context(timeoutCtx).Eval(`() => document.body.innerText`)
+	if err != nil {
+		return "", fmt.Errorf("failed to get page text: %w", err)
+	}
+
+	var text string
+	if err := result.Value.Unmarshal(&text); err != nil {
+		return "", fmt.Errorf("failed to unmarshal text: %w", err)
+	}
+
+	return text, nil
+}
+
 func (b *BrowserAdapter) GetUIElements(ctx context.Context) ([]entity.UIElement, error) {
 	if ctx == nil {
 		ctx = context.Background()

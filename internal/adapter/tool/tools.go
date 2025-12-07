@@ -212,7 +212,7 @@ func NewExtractTool(browser output.BrowserPort, logger output.LoggerPort) *Extra
 
 func (t *ExtractTool) Name() string { return "extract" }
 func (t *ExtractTool) Description() string {
-	return "Extract the full HTML content of the current page. Returns cleaned HTML with preserved structure. Use this when you need to analyze page structure, extract specific data, or process HTML content. For interactive elements info, use ui_summary instead. For visual verification, use screenshot. This returns raw HTML which may be large."
+	return "Extract the text content of the current page. Returns clean text without HTML tags, scripts, or styles. Use this when you need to read page content, extract specific data, or analyze text information. For interactive elements info, use ui_summary instead. For visual verification, use screenshot. This returns only visible text content."
 }
 func (t *ExtractTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
@@ -223,11 +223,11 @@ func (t *ExtractTool) Parameters() map[string]interface{} {
 }
 
 func (t *ExtractTool) Execute(ctx context.Context, args string) (string, error) {
-	content, err := t.browser.GetPageContent(ctx)
+	text, err := t.browser.GetPageText(ctx)
 	if err != nil {
 		return "", err
 	}
-	return content.HTML, nil
+	return text, nil
 }
 
 type UISummaryTool struct {

@@ -819,3 +819,48 @@ func BenchmarkBrowserAdapter_GetUIElements(b *testing.B) {
 		_, _ = adapter.GetUIElements(ctx)
 	}
 }
+
+func TestBrowserAdapter_GetPageText(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<!DOCTYPE html>
+<html>
+<head>
+	<title>Test Page</title>
+	<style>body { color: red; }</style>
+</head>
+<body>
+	<h1>Hello World</h1>
+	<p>This is a test paragraph.</p>
+	<script>console.log('test');</script>
+	<div style="display:none">Hidden content</div>
+</body>
+</html>`)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	cfg := DefaultConfig()
+	cfg.Headless = true
+	cfg.SlowMotion = 0
+
+	adapter, err := NewBrowserAdapter(ctx, cfg)
+	require.NoError(t, err)
+	defer adapter.Close()
+
+	err = adapter.Navigate(ctx, server.URL)
+	require.NoError(t, err)
+
+	text, err := adapter.GetPageText(ctx)
+	require.NoError(t, err)
+
+	assert.Contains(t, text, "Hello World")
+	assert.Contains(t, text, "This is a test paragraph")
+	assert.NotContains(t, text, "<h1>")
+	assert.NotContains(t, text, "<script>")
+	assert.NotContains(t, text, "console.log")
+}

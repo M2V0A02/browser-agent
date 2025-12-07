@@ -14,6 +14,7 @@ type BrowserPort interface {
 	Scroll(ctx context.Context, direction string, amount int) error
 
 	GetPageContent(ctx context.Context) (*entity.PageContent, error)
+	GetPageText(ctx context.Context) (string, error)
 	GetUIElements(ctx context.Context) ([]entity.UIElement, error)
 	Screenshot(ctx context.Context) (*entity.Screenshot, error)
 
