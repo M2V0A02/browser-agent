@@ -1,42 +1,45 @@
-package usecase
+package execute_task
 
 import (
 	"context"
 	"fmt"
 
+	"browser-agent/internal/application/port/input"
 	"browser-agent/internal/application/port/output"
 	"browser-agent/internal/domain/entity"
 )
+
+var _ input.TaskExecutor = (*UseCase)(nil)
 
 const (
 	maxIterations     = 50
 	maxObservationLen = 20000
 )
 
-type ExecuteTaskUseCase struct {
-	llm      output.LLMPort
-	tools    output.ToolRegistry
-	logger   output.LoggerPort
+type UseCase struct {
+	llm          output.LLMPort
+	tools        output.ToolRegistry
+	logger       output.LoggerPort
 	systemPrompt string
 }
 
-type ExecuteTaskConfig struct {
+type Config struct {
 	SystemPrompt string
 }
 
-func DefaultExecuteTaskConfig() ExecuteTaskConfig {
-	return ExecuteTaskConfig{
+func DefaultConfig() Config {
+	return Config{
 		SystemPrompt: "Ты — автономный браузерный агент. Думай шаг за шагом и используй инструменты.",
 	}
 }
 
-func NewExecuteTaskUseCase(
+func New(
 	llm output.LLMPort,
 	tools output.ToolRegistry,
 	logger output.LoggerPort,
-	cfg ExecuteTaskConfig,
-) *ExecuteTaskUseCase {
-	return &ExecuteTaskUseCase{
+	cfg Config,
+) *UseCase {
+	return &UseCase{
 		llm:          llm,
 		tools:        tools,
 		logger:       logger,
@@ -44,12 +47,7 @@ func NewExecuteTaskUseCase(
 	}
 }
 
-type ExecuteResult struct {
-	FinalAnswer string
-	Iterations  int
-}
-
-func (uc *ExecuteTaskUseCase) Execute(ctx context.Context, task string) (*ExecuteResult, error) {
+func (uc *UseCase) Execute(ctx context.Context, task string) (*input.ExecuteResult, error) {
 	messages := []entity.Message{
 		{Role: entity.RoleSystem, Content: uc.systemPrompt},
 		{Role: entity.RoleUser, Content: task},
@@ -72,7 +70,7 @@ func (uc *ExecuteTaskUseCase) Execute(ctx context.Context, task string) (*Execut
 		messages = append(messages, resp.Message)
 
 		if len(resp.Message.ToolCalls) == 0 {
-			return &ExecuteResult{
+			return &input.ExecuteResult{
 				FinalAnswer: resp.Message.Content,
 				Iterations:  iteration,
 			}, nil
@@ -93,7 +91,7 @@ func (uc *ExecuteTaskUseCase) Execute(ctx context.Context, task string) (*Execut
 	return nil, fmt.Errorf("max iterations (%d) exceeded", maxIterations)
 }
 
-func (uc *ExecuteTaskUseCase) executeTool(ctx context.Context, tc entity.ToolCall) string {
+func (uc *UseCase) executeTool(ctx context.Context, tc entity.ToolCall) string {
 	tool, ok := uc.tools.Get(tc.Name)
 	if !ok {
 		uc.logger.Warn("Unknown tool called", "name", tc.Name)

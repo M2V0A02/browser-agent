@@ -5,20 +5,21 @@ import (
 	"fmt"
 
 	"browser-agent/internal/adapter/tool"
+	"browser-agent/internal/application/port/input"
 	"browser-agent/internal/application/port/output"
 	"browser-agent/internal/application/service"
-	"browser-agent/internal/application/usecase"
+	"browser-agent/internal/application/usecase/execute_task"
 	"browser-agent/internal/infrastructure/browser/rod"
 	"browser-agent/internal/infrastructure/llm/openrouter"
 	"browser-agent/internal/infrastructure/logger"
 )
 
 type Container struct {
-	Browser  output.BrowserPort
-	LLM      output.LLMPort
-	Logger   output.LoggerPort
-	Tools    output.ToolRegistry
-	UseCase  *usecase.ExecuteTaskUseCase
+	Browser      output.BrowserPort
+	LLM          output.LLMPort
+	Logger       output.LoggerPort
+	Tools        output.ToolRegistry
+	TaskExecutor input.TaskExecutor
 }
 
 type Config struct {
@@ -48,19 +49,19 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 	tools := service.NewToolRegistry()
 	registerBrowserTools(tools, browser, log)
 
-	uc := usecase.NewExecuteTaskUseCase(
+	uc := execute_task.New(
 		llm,
 		tools,
 		log,
-		usecase.DefaultExecuteTaskConfig(),
+		execute_task.DefaultConfig(),
 	)
 
 	return &Container{
-		Browser: browser,
-		LLM:     llm,
-		Logger:  log,
-		Tools:   tools,
-		UseCase: uc,
+		Browser:      browser,
+		LLM:          llm,
+		Logger:       log,
+		Tools:        tools,
+		TaskExecutor: uc,
 	}, nil
 }
 

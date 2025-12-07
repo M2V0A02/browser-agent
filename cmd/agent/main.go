@@ -41,7 +41,7 @@ func main() {
 	container.Logger.Info("Task started", "task", task)
 	fmt.Println("\nАгент начал работу...")
 
-	result, err := container.UseCase.Execute(ctx, task)
+	result, err := container.TaskExecutor.Execute(ctx, task)
 	if err != nil {
 		container.Logger.Error("Task failed", "error", err)
 		fmt.Printf("\nОшибка выполнения: %v\n", err)
