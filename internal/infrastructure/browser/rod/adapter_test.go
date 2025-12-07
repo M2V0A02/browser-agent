@@ -462,7 +462,6 @@ func TestBrowserAdapter_GetUIElements(t *testing.T) {
 			assert.NotEmpty(t, el.ID)
 			assert.NotEmpty(t, el.Type)
 			assert.NotEmpty(t, el.Selector)
-			assert.True(t, el.Visible)
 
 			switch el.Type {
 			case "button":

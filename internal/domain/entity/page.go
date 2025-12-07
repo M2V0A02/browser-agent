@@ -8,14 +8,12 @@ type PageContent struct {
 }
 
 type UIElement struct {
-	ID         string
-	Type       string
-	Text       string
-	AriaLabel  string
-	Role       string
-	Visible    bool
-	InViewport bool
-	Selector   string
+	ID        string
+	Type      string
+	Text      string
+	AriaLabel string
+	Role      string
+	Selector  string
 }
 
 type Screenshot struct {

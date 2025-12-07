@@ -33,7 +33,7 @@ const (
 	enterWaitTime      = 1 * time.Second
 	scrollWaitTime     = 800 * time.Millisecond
 
-	maxUIElements = 500
+	maxUIElements = 100
 
 	screenshotMaxWidth      = 1024
 	screenshotQuality       = 75
@@ -631,6 +631,11 @@ func (c *elementCollector) tryAddElement(element *rod.Element, elementType strin
 		return
 	}
 
+	inViewport, err := c.isInViewport(element)
+	if err != nil || !inViewport {
+		return
+	}
+
 	selector := element.String()
 	if selector == "" || c.seen[selector] {
 		return
@@ -644,14 +649,12 @@ func (c *elementCollector) tryAddElement(element *rod.Element, elementType strin
 	role, _ := element.Attribute("role")
 
 	uiElement := entity.UIElement{
-		ID:         fmt.Sprintf("ui-%04d", c.counter),
-		Type:       elementType,
-		Text:       text,
-		AriaLabel:  pointerToString(ariaLabel),
-		Role:       pointerToString(role),
-		Visible:    true,
-		InViewport: true,
-		Selector:   selector,
+		ID:        fmt.Sprintf("ui-%04d", c.counter),
+		Type:      elementType,
+		Text:      text,
+		AriaLabel: pointerToString(ariaLabel),
+		Role:      pointerToString(role),
+		Selector:  selector,
 	}
 
 	c.elements = append(c.elements, uiElement)
@@ -660,6 +663,22 @@ func (c *elementCollector) tryAddElement(element *rod.Element, elementType strin
 
 func (c *elementCollector) getElements() []entity.UIElement {
 	return c.elements
+}
+
+func (c *elementCollector) isInViewport(element *rod.Element) (bool, error) {
+	var inViewport bool
+	result, err := element.Eval(`() => {
+		const rect = this.getBoundingClientRect();
+		return rect.top < window.innerHeight &&
+		       rect.bottom > 0 &&
+		       rect.left < window.innerWidth &&
+		       rect.right > 0;
+	}`)
+	if err != nil {
+		return false, err
+	}
+	err = result.Value.Unmarshal(&inViewport)
+	return inViewport, err
 }
 
 func pointerToString(s *string) string {

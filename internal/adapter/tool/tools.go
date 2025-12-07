@@ -256,7 +256,7 @@ func (t *UISummaryTool) Execute(ctx context.Context, args string) (string, error
 	if err != nil {
 		return "", err
 	}
-	data, err := json.MarshalIndent(elements, "", "  ")
+	data, err := json.Marshal(elements)
 	if err != nil {
 		return "", err
 	}
