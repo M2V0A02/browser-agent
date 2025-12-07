@@ -22,3 +22,11 @@ type Screenshot struct {
 	Width  int
 	Height int
 }
+
+type PageContext struct {
+	URL             string
+	Title           string
+	VisibleElements []UIElement
+	TextContent     string
+	ElementCount    int
+}

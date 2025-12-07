@@ -230,39 +230,6 @@ func (t *ExtractTool) Execute(ctx context.Context, args string) (string, error) 
 	return text, nil
 }
 
-type UISummaryTool struct {
-	browser output.BrowserPort
-	logger  output.LoggerPort
-}
-
-func NewUISummaryTool(browser output.BrowserPort, logger output.LoggerPort) *UISummaryTool {
-	return &UISummaryTool{browser: browser, logger: logger}
-}
-
-func (t *UISummaryTool) Name() string { return "ui_summary" }
-func (t *UISummaryTool) Description() string {
-	return "Get structured list of interactive UI elements on current page. Returns JSON array with buttons, links, inputs, and their selectors. Use this BEFORE click or fill operations to find correct selectors. Shows element type, text content, and CSS selector. This is your primary tool for understanding what elements are available to interact with. Call after navigation or scroll to see available options."
-}
-func (t *UISummaryTool) Parameters() map[string]interface{} {
-	return map[string]interface{}{
-		"type":       "object",
-		"properties": map[string]interface{}{},
-		"required":   []string{},
-	}
-}
-
-func (t *UISummaryTool) Execute(ctx context.Context, args string) (string, error) {
-	elements, err := t.browser.GetUIElements(ctx)
-	if err != nil {
-		return "", err
-	}
-	data, err := json.Marshal(elements)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
-}
-
 type PressEnterTool struct {
 	browser output.BrowserPort
 	logger  output.LoggerPort
@@ -368,4 +335,56 @@ func (t *WaitUserActionTool) Execute(ctx context.Context, args string) (string, 
 		return "", err
 	}
 	return "User confirmed action completion", nil
+}
+
+type ObserveTool struct {
+	browser output.BrowserPort
+	logger  output.LoggerPort
+}
+
+func NewObserveTool(browser output.BrowserPort, logger output.LoggerPort) *ObserveTool {
+	return &ObserveTool{browser: browser, logger: logger}
+}
+
+func (t *ObserveTool) Name() string { return "observe" }
+func (t *ObserveTool) Description() string {
+	return "Observe the current state of the page to understand what you are looking at. Returns comprehensive information: current URL, page title, all visible interactive elements (buttons, links, inputs) with their text and selectors, and a preview of the page's text content. Use this tool when you need to understand the page context, after navigation, after scrolling, or when you're unsure what elements are available. This is your primary tool for situational awareness - it tells you what you can see and interact with on the current page."
+}
+func (t *ObserveTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{
+		"type":       "object",
+		"properties": map[string]interface{}{},
+		"required":   []string{},
+	}
+}
+
+func (t *ObserveTool) Execute(ctx context.Context, args string) (string, error) {
+	pageCtx, err := t.browser.GetPageContext(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	result := fmt.Sprintf(`PAGE OBSERVATION:
+
+URL: %s
+Title: %s
+Visible Elements: %d elements found
+
+INTERACTIVE ELEMENTS:
+`, pageCtx.URL, pageCtx.Title, pageCtx.ElementCount)
+
+	for _, el := range pageCtx.VisibleElements {
+		label := el.Text
+		if label == "" && el.AriaLabel != "" {
+			label = el.AriaLabel
+		}
+		if label == "" {
+			label = "(no text)"
+		}
+		result += fmt.Sprintf("- [%s] %s: \"%s\" (selector: %s)\n", el.ID, el.Type, label, el.Selector)
+	}
+
+	result += fmt.Sprintf("\nPAGE CONTENT PREVIEW:\n%s\n", pageCtx.TextContent)
+
+	return result, nil
 }

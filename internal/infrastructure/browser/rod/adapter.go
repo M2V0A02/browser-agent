@@ -408,6 +408,44 @@ func (b *BrowserAdapter) GetUIElements(ctx context.Context) ([]entity.UIElement,
 	return collector.getElements(), nil
 }
 
+func (b *BrowserAdapter) GetPageContext(ctx context.Context) (*entity.PageContext, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if err := b.checkState(); err != nil {
+		return nil, err
+	}
+
+	info, err := b.page.Info()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get page info: %w", err)
+	}
+
+	visibleElements, err := b.GetUIElements(ctx)
+	if err != nil {
+		visibleElements = []entity.UIElement{}
+	}
+
+	pageText, err := b.GetPageText(ctx)
+	if err != nil {
+		pageText = ""
+	}
+
+	const maxTextLength = 1000
+	if len(pageText) > maxTextLength {
+		pageText = pageText[:maxTextLength] + "..."
+	}
+
+	return &entity.PageContext{
+		URL:             info.URL,
+		Title:           info.Title,
+		VisibleElements: visibleElements,
+		TextContent:     pageText,
+		ElementCount:    len(visibleElements),
+	}, nil
+}
+
 func (b *BrowserAdapter) Screenshot(ctx context.Context) (*entity.Screenshot, error) {
 	if ctx == nil {
 		ctx = context.Background()
