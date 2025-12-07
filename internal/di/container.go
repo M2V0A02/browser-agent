@@ -11,7 +11,7 @@ import (
 	"browser-agent/internal/infrastructure/browser/rod"
 	"browser-agent/internal/infrastructure/llm/openrouter"
 	"browser-agent/internal/infrastructure/logger"
-	"browser-agent/internal/usecase/execute_task"
+	"browser-agent/internal/usecase/executor"
 )
 
 type Container struct {
@@ -49,11 +49,11 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 	tools := service.NewToolRegistry()
 	registerBrowserTools(tools, browser, log)
 
-	uc := execute_task.New(
+	uc := executor.New(
 		llm,
 		tools,
 		log,
-		execute_task.DefaultConfig(),
+		executor.DefaultConfig(),
 	)
 
 	return &Container{
