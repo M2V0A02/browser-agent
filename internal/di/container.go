@@ -30,7 +30,7 @@ type Config struct {
 }
 
 func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
-	log, err := logger.NewLoggerAdapter(cfg.TaskName)
+	log, err := logger.NewLoggerAdapter()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logger: %w", err)
 	}

@@ -17,9 +17,8 @@ type LoggerAdapter struct {
 	fields map[string]any
 }
 
-func NewLoggerAdapter(taskName string) (*LoggerAdapter, error) {
-	safeName := sanitize(taskName)
-	filename := fmt.Sprintf("%s_%s.log", time.Now().Format("2006-01-02_15-04-05"), safeName)
+func NewLoggerAdapter() (*LoggerAdapter, error) {
+	filename := fmt.Sprintf("%s.log", time.Now().Format("2006-01-02_15-04-05"))
 
 	if err := os.MkdirAll("log", 0755); err != nil {
 		return nil, fmt.Errorf("create log dir: %w", err)
@@ -113,23 +112,4 @@ func (l *LoggerAdapter) Close() error {
 		return nil
 	}
 	return l.file.Close()
-}
-
-func sanitize(s string) string {
-	result := make([]rune, 0, len(s))
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
-			result = append(result, r)
-		} else {
-			result = append(result, '_')
-		}
-	}
-	s = string(result)
-	if s == "" {
-		return "task"
-	}
-	if len(s) > 60 {
-		s = s[:60]
-	}
-	return s
 }

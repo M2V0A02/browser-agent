@@ -86,6 +86,8 @@ func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatReque
 	var finalMessage entity.Message
 	finalMessage.Role = entity.RoleAssistant
 	toolCallsMap := make(map[int]*entity.ToolCall)
+	var thinkingContent string
+	var textContent string
 
 	for {
 		chunk, err := stream.Recv()
@@ -99,8 +101,12 @@ func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatReque
 
 		delta := chunk.Choices[0].Delta
 
+		if delta.ReasoningContent != "" {
+			thinkingContent += delta.ReasoningContent
+		}
+
 		if delta.Content != "" {
-			finalMessage.Content += delta.Content
+			textContent += delta.Content
 			if onChunk != nil {
 				onChunk(output.StreamChunk{
 					Content: delta.Content,
@@ -128,9 +134,28 @@ func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatReque
 		}
 	}
 
+	if thinkingContent != "" {
+		finalMessage.ContentBlocks = append(finalMessage.ContentBlocks, entity.ContentBlock{
+			Type:     entity.ContentTypeThinking,
+			Thinking: thinkingContent,
+		})
+	}
+
+	if textContent != "" {
+		finalMessage.ContentBlocks = append(finalMessage.ContentBlocks, entity.ContentBlock{
+			Type: entity.ContentTypeText,
+			Text: textContent,
+		})
+		finalMessage.Content = textContent
+	}
+
 	for i := 0; i < len(toolCallsMap); i++ {
 		if tc, ok := toolCallsMap[i]; ok {
 			finalMessage.ToolCalls = append(finalMessage.ToolCalls, *tc)
+			finalMessage.ContentBlocks = append(finalMessage.ContentBlocks, entity.ContentBlock{
+				Type:    entity.ContentTypeToolUse,
+				ToolUse: tc,
+			})
 		}
 	}
 
@@ -159,6 +184,18 @@ func convertMessages(messages []entity.Message) []openai.ChatCompletionMessage {
 		}
 		if msg.Name != "" {
 			oaiMsg.Name = msg.Name
+		}
+
+		if len(msg.ContentBlocks) > 0 {
+			var textContent string
+			for _, block := range msg.ContentBlocks {
+				if block.Type == entity.ContentTypeText {
+					textContent += block.Text
+				}
+			}
+			if textContent != "" {
+				oaiMsg.Content = textContent
+			}
 		}
 
 		for _, tc := range msg.ToolCalls {
@@ -198,11 +235,23 @@ func convertResponseMessage(msg openai.ChatCompletionMessage) entity.Message {
 		Content: msg.Content,
 	}
 
+	if msg.Content != "" {
+		result.ContentBlocks = append(result.ContentBlocks, entity.ContentBlock{
+			Type: entity.ContentTypeText,
+			Text: msg.Content,
+		})
+	}
+
 	for _, tc := range msg.ToolCalls {
-		result.ToolCalls = append(result.ToolCalls, entity.ToolCall{
+		toolCall := entity.ToolCall{
 			ID:        tc.ID,
 			Name:      tc.Function.Name,
 			Arguments: tc.Function.Arguments,
+		}
+		result.ToolCalls = append(result.ToolCalls, toolCall)
+		result.ContentBlocks = append(result.ContentBlocks, entity.ContentBlock{
+			Type:    entity.ContentTypeToolUse,
+			ToolUse: &toolCall,
 		})
 	}
 

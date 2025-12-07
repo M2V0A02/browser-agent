@@ -9,9 +9,25 @@ const (
 	RoleTool      MessageRole = "tool"
 )
 
+type ContentBlockType string
+
+const (
+	ContentTypeText     ContentBlockType = "text"
+	ContentTypeThinking ContentBlockType = "thinking"
+	ContentTypeToolUse  ContentBlockType = "tool_use"
+)
+
+type ContentBlock struct {
+	Type      ContentBlockType
+	Text      string
+	Thinking  string
+	ToolUse   *ToolCall
+}
+
 type Message struct {
 	Role       MessageRole
 	Content    string
+	ContentBlocks []ContentBlock
 	ToolCalls  []ToolCall
 	ToolCallID string
 	Name       string

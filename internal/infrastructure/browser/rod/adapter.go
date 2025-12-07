@@ -23,11 +23,9 @@ import (
 	"github.com/ysmood/gson"
 )
 
-// Compile-time interface implementation check
 var _ output.BrowserPort = (*BrowserAdapter)(nil)
 
 const (
-	// Default timeouts
 	defaultTimeout     = 10 * time.Second
 	defaultSlowMotion  = 500 * time.Millisecond
 	navigationWaitTime = 5 * time.Second
@@ -35,20 +33,16 @@ const (
 	enterWaitTime      = 1 * time.Second
 	scrollWaitTime     = 800 * time.Millisecond
 
-	// Element collection limits
 	maxUIElements = 500
 
-	// Screenshot settings
 	screenshotMaxWidth      = 1024
 	screenshotQuality       = 75
 	screenshotFormatQuality = 80
 
-	// Allowed URL schemes for security
 	schemeHTTP  = "http"
 	schemeHTTPS = "https"
 )
 
-// Common errors
 var (
 	ErrBrowserNotInitialized  = errors.New("browser is not initialized")
 	ErrPageNotInitialized     = errors.New("page is not initialized")
@@ -60,86 +54,67 @@ var (
 	ErrInvalidScrollDirection = errors.New("invalid scroll direction")
 )
 
-// BrowserAdapter provides browser automation capabilities using rod library.
-// It implements the output.BrowserPort interface for use in the application layer.
 type BrowserAdapter struct {
 	browser  *rod.Browser
 	launcher *launcher.Launcher
 	page     *rod.Page
 	timeout  time.Duration
-	mu       sync.RWMutex // Protects browser state
+	mu       sync.RWMutex
 	closed   bool
 }
 
-// BrowserConfig holds configuration options for the browser.
 type BrowserConfig struct {
-	// Headless runs browser in headless mode (no UI)
-	Headless bool
-	// SlowMotion adds delay between actions for debugging
-	SlowMotion time.Duration
-	// Timeout is the default timeout for operations
-	Timeout time.Duration
-	// NoSandbox disables Chrome sandbox (NOT RECOMMENDED for production)
-	NoSandbox bool
-	// DevTools opens Chrome DevTools
-	DevTools bool
-	// DisableSecurityFeatures disables web security (DANGEROUS - use only for testing)
+	Headless                bool
+	SlowMotion              time.Duration
+	Timeout                 time.Duration
+	NoSandbox               bool
+	DevTools                bool
 	DisableSecurityFeatures bool
 }
 
-// DefaultConfig returns a secure default configuration.
 func DefaultConfig() BrowserConfig {
 	return BrowserConfig{
 		Headless:                false,
 		SlowMotion:              defaultSlowMotion,
 		Timeout:                 defaultTimeout,
-		NoSandbox:               false, // Secure by default
+		NoSandbox:               false,
 		DevTools:                false,
-		DisableSecurityFeatures: false, // Secure by default
+		DisableSecurityFeatures: false,
 	}
 }
 
-// NewBrowserAdapter creates a new browser adapter with the given configuration.
-// It returns an error if browser initialization fails.
-// The caller must call Close() when done to clean up resources.
 func NewBrowserAdapter(ctx context.Context, config BrowserConfig) (*BrowserAdapter, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	// Validate configuration
 	if config.Timeout <= 0 {
 		config.Timeout = defaultTimeout
 	}
 
-	// Setup launcher with secure defaults
 	launcherInstance := launcher.New().
 		Headless(config.Headless).
 		Devtools(config.DevTools).
 		NoSandbox(config.NoSandbox).
 		Delete("use-mock-keychain")
 
-	// Only disable security if explicitly requested (NOT RECOMMENDED)
 	if config.DisableSecurityFeatures {
 		launcherInstance = launcherInstance.
 			Set("disable-web-security").
 			Set("allow-running-insecure-content")
 	}
 
-	// Launch browser with context
 	launchURL, err := launcherInstance.Context(ctx).Launch()
 	if err != nil {
 		return nil, fmt.Errorf("failed to launch browser: %w", err)
 	}
 
-	// Create browser connection with proper error handling
 	browser := rod.New().
 		ControlURL(launchURL).
 		Trace(true).
 		SlowMotion(config.SlowMotion).
 		MustConnect()
 
-	// Create initial page
 	page := browser.MustPage("about:blank")
 
 	adapter := &BrowserAdapter{
@@ -153,7 +128,6 @@ func NewBrowserAdapter(ctx context.Context, config BrowserConfig) (*BrowserAdapt
 	return adapter, nil
 }
 
-// IsReady checks if the browser adapter is ready for operations.
 func (b *BrowserAdapter) IsReady() bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -162,28 +136,23 @@ func (b *BrowserAdapter) IsReady() bool {
 		return false
 	}
 
-	// Check if page is still valid
 	_, err := b.page.Info()
 	return err == nil
 }
 
-// Navigate navigates to the specified URL with proper validation and context support.
 func (b *BrowserAdapter) Navigate(ctx context.Context, targetURL string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	// Validate URL
 	if err := b.validateURL(targetURL); err != nil {
 		return err
 	}
 
-	// Check browser state
 	if err := b.checkState(); err != nil {
 		return err
 	}
 
-	// Navigate with context
 	if err := b.page.Context(ctx).Navigate(targetURL); err != nil {
 		if ctx.Err() != nil {
 			return fmt.Errorf("%w: %v", ErrContextCanceled, ctx.Err())
@@ -191,7 +160,6 @@ func (b *BrowserAdapter) Navigate(ctx context.Context, targetURL string) error {
 		return fmt.Errorf("navigation failed: %w", err)
 	}
 
-	// Wait for page load with context
 	waitCtx, cancel := context.WithTimeout(ctx, navigationWaitTime)
 	defer cancel()
 
@@ -202,14 +170,11 @@ func (b *BrowserAdapter) Navigate(ctx context.Context, targetURL string) error {
 		return fmt.Errorf("wait load failed: %w", err)
 	}
 
-	// Wait for page to be idle
 	_ = b.page.Context(ctx).WaitIdle(navigationWaitTime)
 
 	return nil
 }
 
-// Click clicks on an element identified by the selector.
-// Supports both CSS selectors and XPath expressions.
 func (b *BrowserAdapter) Click(ctx context.Context, selector string) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -223,13 +188,11 @@ func (b *BrowserAdapter) Click(ctx context.Context, selector string) error {
 		return err
 	}
 
-	// Find element with timeout
 	element, err := b.findElement(ctx, selector)
 	if err != nil {
 		return fmt.Errorf("element not found for selector %q: %w", selector, err)
 	}
 
-	// Perform click
 	if err := element.Context(ctx).Click(proto.InputMouseButtonLeft, 1); err != nil {
 		if ctx.Err() != nil {
 			return fmt.Errorf("%w: %v", ErrContextCanceled, ctx.Err())
@@ -237,7 +200,6 @@ func (b *BrowserAdapter) Click(ctx context.Context, selector string) error {
 		return fmt.Errorf("click failed: %w", err)
 	}
 
-	// Wait for page to settle
 	waitCtx, cancel := context.WithTimeout(ctx, clickWaitTime)
 	defer cancel()
 	_ = b.page.Context(waitCtx).WaitIdle(clickWaitTime)
@@ -245,7 +207,6 @@ func (b *BrowserAdapter) Click(ctx context.Context, selector string) error {
 	return nil
 }
 
-// Fill fills an input field with the specified text.
 func (b *BrowserAdapter) Fill(ctx context.Context, selector, text string) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -259,7 +220,6 @@ func (b *BrowserAdapter) Fill(ctx context.Context, selector, text string) error 
 		return err
 	}
 
-	// Find element
 	timeoutCtx, cancel := context.WithTimeout(ctx, b.timeout)
 	defer cancel()
 
@@ -271,14 +231,12 @@ func (b *BrowserAdapter) Fill(ctx context.Context, selector, text string) error 
 		return fmt.Errorf("field not found %q: %w", selector, err)
 	}
 
-	// Clear existing text
 	if err := element.Context(ctx).SelectAllText(); err == nil {
 		if err := element.Context(ctx).Input(""); err != nil {
 			return fmt.Errorf("failed to clear field: %w", err)
 		}
 	}
 
-	// Input new text
 	if err := element.Context(ctx).Input(text); err != nil {
 		if ctx.Err() != nil {
 			return fmt.Errorf("%w: %v", ErrContextCanceled, ctx.Err())
@@ -289,7 +247,6 @@ func (b *BrowserAdapter) Fill(ctx context.Context, selector, text string) error 
 	return nil
 }
 
-// PressEnter simulates pressing the Enter key.
 func (b *BrowserAdapter) PressEnter(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -299,13 +256,11 @@ func (b *BrowserAdapter) PressEnter(ctx context.Context) error {
 		return err
 	}
 
-	// Find body element
 	bodyElement, err := b.page.Context(ctx).Element("body")
 	if err != nil {
 		return fmt.Errorf("failed to find body element: %w", err)
 	}
 
-	// Press Enter key (using \n for cross-platform compatibility)
 	if err := bodyElement.Context(ctx).Input("\n"); err != nil {
 		if ctx.Err() != nil {
 			return fmt.Errorf("%w: %v", ErrContextCanceled, ctx.Err())
@@ -313,7 +268,6 @@ func (b *BrowserAdapter) PressEnter(ctx context.Context) error {
 		return fmt.Errorf("failed to press Enter: %w", err)
 	}
 
-	// Wait for potential page changes
 	waitCtx, cancel := context.WithTimeout(ctx, enterWaitTime)
 	defer cancel()
 	_ = b.page.Context(waitCtx).WaitIdle(enterWaitTime)
@@ -321,7 +275,6 @@ func (b *BrowserAdapter) PressEnter(ctx context.Context) error {
 	return nil
 }
 
-// ScrollDirection represents valid scroll directions
 type ScrollDirection string
 
 const (
@@ -331,7 +284,6 @@ const (
 	ScrollBottom ScrollDirection = "bottom"
 )
 
-// Scroll scrolls the page in the specified direction.
 func (b *BrowserAdapter) Scroll(ctx context.Context, direction string, amount int) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -343,7 +295,6 @@ func (b *BrowserAdapter) Scroll(ctx context.Context, direction string, amount in
 
 	normalizedDirection := ScrollDirection(strings.ToLower(strings.TrimSpace(direction)))
 
-	// Map of scroll directions to JavaScript code
 	scrollScripts := map[ScrollDirection]string{
 		ScrollDown:   "() => window.scrollBy(0, window.innerHeight * 2)",
 		ScrollUp:     "() => window.scrollBy(0, -window.innerHeight * 2)",
@@ -356,7 +307,6 @@ func (b *BrowserAdapter) Scroll(ctx context.Context, direction string, amount in
 		return fmt.Errorf("%w: %s (valid: down, up, top, bottom)", ErrInvalidScrollDirection, direction)
 	}
 
-	// Execute scroll script
 	_, err := b.page.Context(ctx).Eval(script)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -365,7 +315,6 @@ func (b *BrowserAdapter) Scroll(ctx context.Context, direction string, amount in
 		return fmt.Errorf("scroll failed: %w", err)
 	}
 
-	// Wait for scroll to complete
 	waitCtx, cancel := context.WithTimeout(ctx, scrollWaitTime)
 	defer cancel()
 	_ = b.page.Context(waitCtx).WaitIdle(scrollWaitTime)
@@ -373,7 +322,6 @@ func (b *BrowserAdapter) Scroll(ctx context.Context, direction string, amount in
 	return nil
 }
 
-// GetPageContent retrieves the current page content including HTML and UI elements.
 func (b *BrowserAdapter) GetPageContent(ctx context.Context) (*entity.PageContent, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -383,13 +331,11 @@ func (b *BrowserAdapter) GetPageContent(ctx context.Context) (*entity.PageConten
 		return nil, err
 	}
 
-	// Get page info
 	info, err := b.page.Context(ctx).Info()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get page info: %w", err)
 	}
 
-	// Get body element
 	timeoutCtx, cancel := context.WithTimeout(ctx, b.timeout)
 	defer cancel()
 
@@ -398,16 +344,14 @@ func (b *BrowserAdapter) GetPageContent(ctx context.Context) (*entity.PageConten
 		return nil, fmt.Errorf("body not found: %w", err)
 	}
 
-	// Get HTML content
 	html, err := bodyElement.HTML()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get HTML: %w", err)
 	}
 
-	// Get UI elements (non-critical, return empty list on error)
 	elements, err := b.GetUIElements(ctx)
 	if err != nil {
-		elements = []entity.UIElement{} // Return empty list instead of nil
+		elements = []entity.UIElement{}
 	}
 
 	return &entity.PageContent{
@@ -418,7 +362,6 @@ func (b *BrowserAdapter) GetPageContent(ctx context.Context) (*entity.PageConten
 	}, nil
 }
 
-// GetUIElements extracts interactive UI elements from the current page.
 func (b *BrowserAdapter) GetUIElements(ctx context.Context) ([]entity.UIElement, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -430,27 +373,16 @@ func (b *BrowserAdapter) GetUIElements(ctx context.Context) ([]entity.UIElement,
 
 	collector := newElementCollector(maxUIElements)
 
-	// Collect buttons
-	if err := b.collectElementsByType(ctx, collector, "button",
-		"button, [role='button'], [data-tooltip], [aria-label]:not([aria-label=''])"); err != nil {
-		// Log error but continue
-	}
+	_ = b.collectElementsByType(ctx, collector, "button",
+		"button, [role='button'], [data-tooltip], [aria-label]:not([aria-label=''])")
 
-	// Collect inputs
-	if err := b.collectElementsByType(ctx, collector, "input",
-		"input, textarea"); err != nil {
-		// Log error but continue
-	}
+	_ = b.collectElementsByType(ctx, collector, "input", "input, textarea")
 
-	// Collect links
-	if err := b.collectElementsByType(ctx, collector, "link", "a"); err != nil {
-		// Log error but continue
-	}
+	_ = b.collectElementsByType(ctx, collector, "link", "a")
 
 	return collector.getElements(), nil
 }
 
-// Screenshot captures a screenshot of the current page.
 func (b *BrowserAdapter) Screenshot(ctx context.Context) (*entity.Screenshot, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -460,7 +392,6 @@ func (b *BrowserAdapter) Screenshot(ctx context.Context) (*entity.Screenshot, er
 		return nil, err
 	}
 
-	// Capture screenshot
 	imageBytes, err := b.page.Context(ctx).Screenshot(true, &proto.PageCaptureScreenshot{
 		Format:  proto.PageCaptureScreenshotFormatJpeg,
 		Quality: gson.Int(screenshotFormatQuality),
@@ -472,11 +403,9 @@ func (b *BrowserAdapter) Screenshot(ctx context.Context) (*entity.Screenshot, er
 		return nil, fmt.Errorf("screenshot failed: %w", err)
 	}
 
-	// Process screenshot
 	return b.processScreenshot(imageBytes)
 }
 
-// CurrentURL returns the current page URL.
 func (b *BrowserAdapter) CurrentURL() string {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -493,7 +422,6 @@ func (b *BrowserAdapter) CurrentURL() string {
 	return info.URL
 }
 
-// SetTimeout changes the default timeout for operations.
 func (b *BrowserAdapter) SetTimeout(timeout time.Duration) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -503,15 +431,12 @@ func (b *BrowserAdapter) SetTimeout(timeout time.Duration) {
 	}
 }
 
-// GetTimeout returns the current timeout setting.
 func (b *BrowserAdapter) GetTimeout() time.Duration {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return b.timeout
 }
 
-// Close closes the browser and cleans up all resources.
-// It is safe to call multiple times.
 func (b *BrowserAdapter) Close() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -522,13 +447,11 @@ func (b *BrowserAdapter) Close() {
 
 	b.closed = true
 
-	// Close browser connection
 	if b.browser != nil {
 		_ = b.browser.Close()
 		b.browser = nil
 	}
 
-	// Kill and cleanup launcher
 	if b.launcher != nil {
 		b.launcher.Kill()
 		b.launcher.Cleanup()
@@ -538,9 +461,6 @@ func (b *BrowserAdapter) Close() {
 	b.page = nil
 }
 
-// Private helper methods
-
-// checkState verifies that the browser is in a valid state for operations.
 func (b *BrowserAdapter) checkState() error {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -560,7 +480,6 @@ func (b *BrowserAdapter) checkState() error {
 	return nil
 }
 
-// validateURL validates that the URL is safe to navigate to.
 func (b *BrowserAdapter) validateURL(targetURL string) error {
 	if strings.TrimSpace(targetURL) == "" {
 		return fmt.Errorf("%w: URL cannot be empty", ErrInvalidURL)
@@ -571,7 +490,6 @@ func (b *BrowserAdapter) validateURL(targetURL string) error {
 		return fmt.Errorf("%w: %v", ErrInvalidURL, err)
 	}
 
-	// Allow http, https, and about: schemes
 	scheme := strings.ToLower(parsedURL.Scheme)
 	if scheme != schemeHTTP && scheme != schemeHTTPS && scheme != "about" {
 		return fmt.Errorf("%w: unsupported scheme %q (only http, https, about allowed)",
@@ -581,7 +499,6 @@ func (b *BrowserAdapter) validateURL(targetURL string) error {
 	return nil
 }
 
-// validateSelector validates that the selector is not empty.
 func (b *BrowserAdapter) validateSelector(selector string) error {
 	if strings.TrimSpace(selector) == "" {
 		return fmt.Errorf("%w: selector cannot be empty", ErrInvalidSelector)
@@ -589,7 +506,6 @@ func (b *BrowserAdapter) validateSelector(selector string) error {
 	return nil
 }
 
-// findElement finds an element using either CSS selector or XPath.
 func (b *BrowserAdapter) findElement(ctx context.Context, selector string) (*rod.Element, error) {
 	timeoutCtx, cancel := context.WithTimeout(ctx, b.timeout)
 	defer cancel()
@@ -597,7 +513,6 @@ func (b *BrowserAdapter) findElement(ctx context.Context, selector string) (*rod
 	var element *rod.Element
 	var err error
 
-	// Determine selector type
 	if isXPathSelector(selector) {
 		element, err = b.page.Context(timeoutCtx).ElementX(selector)
 	} else {
@@ -614,7 +529,6 @@ func (b *BrowserAdapter) findElement(ctx context.Context, selector string) (*rod
 	return element, nil
 }
 
-// isXPathSelector determines if a selector is an XPath expression.
 func isXPathSelector(selector string) bool {
 	selector = strings.TrimSpace(selector)
 	return strings.HasPrefix(selector, "/") ||
@@ -622,7 +536,6 @@ func isXPathSelector(selector string) bool {
 		strings.Contains(selector, "xpath=")
 }
 
-// collectElementsByType collects elements of a specific type.
 func (b *BrowserAdapter) collectElementsByType(
 	ctx context.Context,
 	collector *elementCollector,
@@ -644,20 +557,16 @@ func (b *BrowserAdapter) collectElementsByType(
 	return nil
 }
 
-// processScreenshot processes and resizes a screenshot.
 func (b *BrowserAdapter) processScreenshot(imageBytes []byte) (*entity.Screenshot, error) {
-	// Decode image
 	img, _, err := image.Decode(bytes.NewReader(imageBytes))
 	if err != nil {
 		return nil, fmt.Errorf("image decode failed: %w", err)
 	}
 
-	// Resize if too large
 	if img.Bounds().Dx() > screenshotMaxWidth {
 		img = imaging.Resize(img, screenshotMaxWidth, 0, imaging.Lanczos)
 	}
 
-	// Re-encode as JPEG
 	buffer := new(bytes.Buffer)
 	if err := jpeg.Encode(buffer, img, &jpeg.Options{Quality: screenshotQuality}); err != nil {
 		return nil, fmt.Errorf("jpeg encode failed: %w", err)
@@ -671,7 +580,6 @@ func (b *BrowserAdapter) processScreenshot(imageBytes []byte) (*entity.Screensho
 	}, nil
 }
 
-// elementCollector manages the collection of UI elements with deduplication.
 type elementCollector struct {
 	elements    []entity.UIElement
 	seen        map[string]bool
@@ -679,7 +587,6 @@ type elementCollector struct {
 	maxElements int
 }
 
-// newElementCollector creates a new element collector.
 func newElementCollector(maxElements int) *elementCollector {
 	return &elementCollector{
 		elements:    make([]entity.UIElement, 0, maxElements),
@@ -689,33 +596,28 @@ func newElementCollector(maxElements int) *elementCollector {
 	}
 }
 
-// tryAddElement attempts to add an element if it's valid and not duplicate.
 func (c *elementCollector) tryAddElement(element *rod.Element, elementType string) {
 	if element == nil || c.counter >= c.maxElements {
 		return
 	}
 
-	// Check visibility
 	visible, err := element.Visible()
 	if err != nil || !visible {
 		return
 	}
 
-	// Get selector
 	selector := element.String()
 	if selector == "" || c.seen[selector] {
 		return
 	}
 	c.seen[selector] = true
 
-	// Extract element properties
 	text, _ := element.Text()
 	text = strings.TrimSpace(text)
 
 	ariaLabel, _ := element.Attribute("aria-label")
 	role, _ := element.Attribute("role")
 
-	// Create UI element
 	uiElement := entity.UIElement{
 		ID:         fmt.Sprintf("ui-%04d", c.counter),
 		Type:       elementType,
@@ -731,12 +633,10 @@ func (c *elementCollector) tryAddElement(element *rod.Element, elementType strin
 	c.counter++
 }
 
-// getElements returns the collected elements.
 func (c *elementCollector) getElements() []entity.UIElement {
 	return c.elements
 }
 
-// pointerToString safely converts a string pointer to a string.
 func pointerToString(s *string) string {
 	if s != nil {
 		return *s
