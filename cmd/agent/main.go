@@ -1,4 +1,3 @@
-// cmd/agent/main.go
 package main
 
 import (
@@ -10,36 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"browser-agent/internal/agents"
-	"browser-agent/internal/infrastructure/browser/rodwrapper"
+	"browser-agent/internal/di"
 	"browser-agent/internal/infrastructure/env"
-	"browser-agent/internal/infrastructure/logger"
 )
 
 func main() {
 	envService := env.NewEnvService()
-
-	taskLogger, err := logger.NewLogger("launch")
-	if err != nil {
-		log.Fatal("Не удалось создать логгер: ", err)
-	}
-	defer taskLogger.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-
-	browser, err := rodwrapper.NewBrowser(ctx)
-	if err != nil {
-		taskLogger.Logf("Ошибка запуска браузера: %v", err)
-		log.Fatal(err)
-	}
-	defer browser.Close()
-
-	agent, err := agents.NewModernAgent(browser, envService, taskLogger)
-	if err != nil {
-		taskLogger.Logf("Ошибка создания агента: %v", err)
-		log.Fatal(err)
-	}
 
 	fmt.Println("\nВведите задачу для агента:")
 	reader := bufio.NewReader(os.Stdin)
@@ -47,20 +22,33 @@ func main() {
 	if err != nil {
 		log.Fatal("Ошибка чтения ввода: ", err)
 	}
-	// Убираем символ перевода строки
 	task = strings.TrimSpace(task)
 
-	taskLogger.Logf("ЗАДАЧА: %s", task)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	container, err := di.NewContainer(ctx, di.Config{
+		OpenRouterAPIKey: envService.MustGet("OPENROUTER_API_KEY"),
+		OpenRouterModel:  envService.MustGet("OPENROUTER_MODEL_NAME"),
+		BrowserHeadless:  false,
+		TaskName:         task,
+	})
+	if err != nil {
+		log.Fatalf("Ошибка инициализации: %v", err)
+	}
+	defer container.Close()
+
+	container.Logger.Info("Task started", "task", task)
 	fmt.Println("\nАгент начал работу...")
 
-	result, err := agent.Execute(ctx, task)
+	result, err := container.UseCase.Execute(ctx, task)
 	if err != nil {
-		taskLogger.Logf("ОШИБКА: %v", err)
+		container.Logger.Error("Task failed", "error", err)
 		fmt.Printf("\nОшибка выполнения: %v\n", err)
 		os.Exit(1)
 	}
 
+	container.Logger.Info("Task completed", "iterations", result.Iterations)
 	fmt.Println("\nФИНАЛЬНЫЙ ОТВЕТ:")
-	fmt.Println(result)
-	taskLogger.Logf("УСПЕШНО ЗАВЕРШЕНО")
+	fmt.Println(result.FinalAnswer)
 }

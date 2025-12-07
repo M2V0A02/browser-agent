@@ -114,3 +114,22 @@ func (l *LoggerAdapter) Close() error {
 	}
 	return l.file.Close()
 }
+
+func sanitize(s string) string {
+	result := make([]rune, 0, len(s))
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			result = append(result, r)
+		} else {
+			result = append(result, '_')
+		}
+	}
+	s = string(result)
+	if s == "" {
+		return "task"
+	}
+	if len(s) > 60 {
+		s = s[:60]
+	}
+	return s
+}
