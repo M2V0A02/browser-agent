@@ -253,3 +253,6 @@ log/*
 logs/*
 
 *__debug*
+
+# Claude Code
+CLAUDE.md

@@ -73,11 +73,17 @@ func (a *ReactAgent) Run(ctx context.Context, task string) (*AgentResult, error)
 
 		var thought strings.Builder
 		var assistantMsg openai.ChatCompletionMessage
+		// Map для накопления tool calls по индексу (streaming приходит частями)
+		toolCallsMap := make(map[int]*openai.ToolCall)
 
 		for {
 			chunk, err := stream.Recv()
 			if err != nil {
 				break
+			}
+
+			if len(chunk.Choices) == 0 {
+				continue
 			}
 
 			delta := chunk.Choices[0].Delta
@@ -86,11 +92,40 @@ func (a *ReactAgent) Run(ctx context.Context, task string) (*AgentResult, error)
 				thought.WriteString(delta.Content)
 				assistantMsg.Content += delta.Content
 			}
-			if delta.ToolCalls != nil {
-				assistantMsg.ToolCalls = append(assistantMsg.ToolCalls, delta.ToolCalls...)
+
+			// Мержим tool calls по индексу
+			for _, tc := range delta.ToolCalls {
+				idx := *tc.Index
+				if existing, ok := toolCallsMap[idx]; ok {
+					// Дополняем существующий tool call
+					existing.Function.Arguments += tc.Function.Arguments
+					if tc.Function.Name != "" {
+						existing.Function.Name = tc.Function.Name
+					}
+					if tc.ID != "" {
+						existing.ID = tc.ID
+					}
+				} else {
+					// Создаём новый tool call
+					toolCallsMap[idx] = &openai.ToolCall{
+						ID:   tc.ID,
+						Type: tc.Type,
+						Function: openai.FunctionCall{
+							Name:      tc.Function.Name,
+							Arguments: tc.Function.Arguments,
+						},
+					}
+				}
 			}
 		}
 		stream.Close()
+
+		// Конвертируем map в slice
+		for i := 0; i < len(toolCallsMap); i++ {
+			if tc, ok := toolCallsMap[i]; ok {
+				assistantMsg.ToolCalls = append(assistantMsg.ToolCalls, *tc)
+			}
+		}
 
 		a.messages = append(a.messages, assistantMsg)
 
@@ -100,10 +135,17 @@ func (a *ReactAgent) Run(ctx context.Context, task string) (*AgentResult, error)
 				name := tc.Function.Name
 				args := tc.Function.Arguments
 
-				obs, err := a.toolMap[name].Call(ctx, args)
+				var obs string
+				var err error
 
-				if err != nil {
-					obs = "Error: " + err.Error()
+				tool, ok := a.toolMap[name]
+				if !ok {
+					obs = fmt.Sprintf("Error: unknown tool '%s'", name)
+				} else {
+					obs, err = tool.Call(ctx, args)
+					if err != nil {
+						obs = "Error: " + err.Error()
+					}
 				}
 
 				// По-прежнему обрезаем огромные ответы, чтобы не убить контекст

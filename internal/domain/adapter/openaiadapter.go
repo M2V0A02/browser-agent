@@ -21,9 +21,9 @@ func NewOpenAiAdapter(tool t.Tool) *OpenAiAdapter {
 // Преобразуем в openai.Tool с вызовом метода Parameters()
 func (a *OpenAiAdapter) ToOpenAITool() openai.Tool {
 	return openai.Tool{
-		Type: openai.ToolType(a.Tool.Type()),
+		Type: openai.ToolTypeFunction, // OpenAI API требует "function"
 		Function: &openai.FunctionDefinition{
-			Name:        a.Tool.Name(), // "fill"
+			Name:        a.Tool.Name(),
 			Description: a.Tool.Description(),
 			Parameters:  a.Tool.Parameters(),
 		},
