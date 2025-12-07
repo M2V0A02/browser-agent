@@ -45,6 +45,7 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 	}
 
 	llmCfg := openrouter.DefaultConfig(cfg.OpenRouterAPIKey, cfg.OpenRouterModel)
+	llmCfg.Logger = log
 	llm := openrouter.NewOpenRouterAdapter(llmCfg)
 
 	tools := service.NewToolRegistry()

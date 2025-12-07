@@ -1,10 +1,13 @@
 package openrouter
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 
 	"browser-agent/internal/application/port/output"
 	"browser-agent/internal/domain/entity"
@@ -17,12 +20,14 @@ var _ output.LLMPort = (*OpenRouterAdapter)(nil)
 type OpenRouterAdapter struct {
 	client *openai.Client
 	model  string
+	logger output.LoggerPort
 }
 
 type Config struct {
 	APIKey  string
 	Model   string
 	BaseURL string
+	Logger  output.LoggerPort
 }
 
 func DefaultConfig(apiKey, model string) Config {
@@ -33,13 +38,61 @@ func DefaultConfig(apiKey, model string) Config {
 	}
 }
 
+type loggingTransport struct {
+	base   http.RoundTripper
+	logger output.LoggerPort
+}
+
+func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t.logger != nil {
+		var bodyBytes []byte
+		if req.Body != nil {
+			bodyBytes, _ = io.ReadAll(req.Body)
+			req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+		}
+
+		var requestData map[string]interface{}
+		if len(bodyBytes) > 0 {
+			json.Unmarshal(bodyBytes, &requestData)
+		}
+
+		t.logger.Info("HTTP Request",
+			"method", req.Method,
+			"url", req.URL.String(),
+			"body", requestData,
+		)
+	}
+
+	resp, err := t.base.RoundTrip(req)
+
+	if t.logger != nil && resp != nil {
+		t.logger.Info("HTTP Response",
+			"status", resp.Status,
+			"statusCode", resp.StatusCode,
+		)
+	}
+
+	return resp, err
+}
+
 func NewOpenRouterAdapter(cfg Config) *OpenRouterAdapter {
 	config := openai.DefaultConfig(cfg.APIKey)
 	config.BaseURL = cfg.BaseURL
 
+	if cfg.Logger != nil {
+		transport := &loggingTransport{
+			base:   http.DefaultTransport,
+			logger: cfg.Logger,
+		}
+		config.HTTPClient = &http.Client{
+			Transport: transport,
+		}
+	}
+
 	return &OpenRouterAdapter{
 		client: openai.NewClientWithConfig(config),
 		model:  cfg.Model,
+		logger: cfg.Logger,
 	}
 }
 
