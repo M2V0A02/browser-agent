@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"browser-agent/internal/adapter/tool"
+	tool "browser-agent/internal/adapter/tools"
 	"browser-agent/internal/application/port/input"
 	"browser-agent/internal/application/port/output"
 	"browser-agent/internal/application/service"
