@@ -207,6 +207,113 @@ func (b *BrowserAdapter) Click(ctx context.Context, selector string) error {
 	return nil
 }
 
+func (b *BrowserAdapter) ClickWithChanges(ctx context.Context, selector string) (*entity.ClickResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if err := b.validateSelector(selector); err != nil {
+		return &entity.ClickResult{Success: false, Error: err.Error()}, err
+	}
+
+	if err := b.checkState(); err != nil {
+		return &entity.ClickResult{Success: false, Error: err.Error()}, err
+	}
+
+	beforeURL := b.CurrentURL()
+	beforeElements, _ := b.GetUIElements(ctx)
+	beforeCount := len(beforeElements)
+
+	element, err := b.findElement(ctx, selector)
+	if err != nil {
+		return &entity.ClickResult{
+			Success: false,
+			Error:   fmt.Sprintf("element not found for selector %q: %v", selector, err),
+		}, err
+	}
+
+	if err := element.Context(ctx).Click(proto.InputMouseButtonLeft, 1); err != nil {
+		if ctx.Err() != nil {
+			return &entity.ClickResult{Success: false, Error: "context canceled"}, ErrContextCanceled
+		}
+		return &entity.ClickResult{Success: false, Error: fmt.Sprintf("click failed: %v", err)}, err
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, clickWaitTime)
+	defer cancel()
+	_ = b.page.Context(waitCtx).WaitIdle(clickWaitTime)
+
+	afterURL := b.CurrentURL()
+	afterElements, _ := b.GetUIElements(ctx)
+	afterCount := len(afterElements)
+
+	changes := &entity.PageChanges{
+		URLChanged: beforeURL != afterURL,
+		NewURL:     afterURL,
+	}
+
+	if afterCount > beforeCount {
+		newElements := []entity.UIElement{}
+		beforeMap := make(map[string]bool)
+		for _, el := range beforeElements {
+			beforeMap[el.Selector] = true
+		}
+		for _, el := range afterElements {
+			if !beforeMap[el.Selector] {
+				newElements = append(newElements, el)
+				if el.Role == "dialog" || strings.Contains(strings.ToLower(el.Text), "modal") {
+					changes.ModalOpened = true
+				}
+			}
+		}
+		changes.NewElements = newElements
+	} else if afterCount < beforeCount {
+		changes.ElementsRemoved = beforeCount - afterCount
+		changes.ModalClosed = true
+	}
+
+	return &entity.ClickResult{
+		Success: true,
+		Changes: changes,
+	}, nil
+}
+
+func (b *BrowserAdapter) BatchClick(ctx context.Context, selectors []string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if err := b.checkState(); err != nil {
+		return err
+	}
+
+	for i, selector := range selectors {
+		if err := b.validateSelector(selector); err != nil {
+			return fmt.Errorf("invalid selector at index %d (%q): %w", i, selector, err)
+		}
+
+		element, err := b.findElement(ctx, selector)
+		if err != nil {
+			return fmt.Errorf("element not found at index %d for selector %q: %w", i, selector, err)
+		}
+
+		if err := element.Context(ctx).Click(proto.InputMouseButtonLeft, 1); err != nil {
+			if ctx.Err() != nil {
+				return fmt.Errorf("click %d/%d failed: %w", i+1, len(selectors), ErrContextCanceled)
+			}
+			return fmt.Errorf("click %d/%d failed on selector %q: %w", i+1, len(selectors), selector, err)
+		}
+
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, clickWaitTime)
+	defer cancel()
+	_ = b.page.Context(waitCtx).WaitIdle(clickWaitTime)
+
+	return nil
+}
+
 func (b *BrowserAdapter) Fill(ctx context.Context, selector, text string) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -242,6 +349,45 @@ func (b *BrowserAdapter) Fill(ctx context.Context, selector, text string) error 
 			return fmt.Errorf("%w: %v", ErrContextCanceled, ctx.Err())
 		}
 		return fmt.Errorf("input failed: %w", err)
+	}
+
+	return nil
+}
+
+func (b *BrowserAdapter) BatchFill(ctx context.Context, fields map[string]string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if err := b.checkState(); err != nil {
+		return err
+	}
+
+	for selector, text := range fields {
+		if err := b.validateSelector(selector); err != nil {
+			return fmt.Errorf("invalid selector %q: %w", selector, err)
+		}
+
+		timeoutCtx, cancel := context.WithTimeout(ctx, b.timeout)
+		element, err := b.page.Context(timeoutCtx).Element(selector)
+		cancel()
+
+		if err != nil {
+			return fmt.Errorf("field not found %q: %w", selector, err)
+		}
+
+		if err := element.Context(ctx).SelectAllText(); err == nil {
+			if err := element.Context(ctx).Input(""); err != nil {
+				return fmt.Errorf("failed to clear field %q: %w", selector, err)
+			}
+		}
+
+		if err := element.Context(ctx).Input(text); err != nil {
+			if ctx.Err() != nil {
+				return fmt.Errorf("input failed for %q: %w", selector, ErrContextCanceled)
+			}
+			return fmt.Errorf("input failed for %q: %w", selector, err)
+		}
 	}
 
 	return nil

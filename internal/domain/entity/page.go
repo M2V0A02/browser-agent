@@ -65,3 +65,18 @@ type SearchElement struct {
 	Selector   string
 	Attributes map[string]string
 }
+
+type PageChanges struct {
+	NewElements     []UIElement
+	URLChanged      bool
+	NewURL          string
+	ModalOpened     bool
+	ModalClosed     bool
+	ElementsRemoved int
+}
+
+type ClickResult struct {
+	Success bool
+	Changes *PageChanges
+	Error   string
+}

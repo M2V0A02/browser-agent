@@ -60,7 +60,7 @@ func NewClickTool(browser output.BrowserPort, logger output.LoggerPort) *ClickTo
 
 func (t *ClickTool) Name() string { return "click" }
 func (t *ClickTool) Description() string {
-	return "Click on a page element using CSS selector or XPath. Use this to interact with buttons, links, checkboxes, or any clickable element. First use ui_summary to get available selectors. Supports both CSS selectors (e.g., '#submit-btn', '.menu-item') and XPath (e.g., '//button[text()=\"Submit\"]'). Returns success message or error if element not found."
+	return "Click on page elements. Supports single click, batch clicking multiple elements, and observing changes after click. Use 'selector' for single click, 'selectors' array for batch operations (up to 50 elements). Set 'observe' to true to see what changed after clicking (new modals, buttons, URL changes). Batch clicks are executed sequentially without returning to LLM between clicks."
 }
 func (t *ClickTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
@@ -68,20 +68,99 @@ func (t *ClickTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"selector": map[string]interface{}{
 				"type":        "string",
-				"description": "CSS or XPath selector",
+				"description": "CSS or XPath selector for single element click",
+			},
+			"selectors": map[string]interface{}{
+				"type":        "array",
+				"items":       map[string]interface{}{"type": "string"},
+				"description": "Array of CSS selectors for batch clicking (max 50). Example: [\"#checkbox1\", \"#checkbox2\", \"#checkbox3\"]",
+				"maxItems":    50,
+			},
+			"observe": map[string]interface{}{
+				"type":        "boolean",
+				"description": "If true, observe and return page changes after clicking (new elements, modals, URL changes). Only works with single selector.",
+				"default":     false,
 			},
 		},
-		"required": []string{"selector"},
+		"oneOf": []map[string]interface{}{
+			{"required": []string{"selector"}},
+			{"required": []string{"selectors"}},
+		},
 	}
 }
 
 func (t *ClickTool) Execute(ctx context.Context, args string) (string, error) {
 	var input struct {
-		Selector string `json:"selector"`
+		Selector  string   `json:"selector"`
+		Selectors []string `json:"selectors"`
+		Observe   bool     `json:"observe"`
 	}
 	if err := json.Unmarshal([]byte(args), &input); err != nil {
 		return "", err
 	}
+
+	if len(input.Selectors) > 0 {
+		if input.Observe {
+			return "", fmt.Errorf("observe mode only works with single selector, not batch")
+		}
+		if len(input.Selectors) > 50 {
+			return "", fmt.Errorf("too many selectors (max 50, got %d)", len(input.Selectors))
+		}
+		if err := t.browser.BatchClick(ctx, input.Selectors); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Successfully clicked %d elements", len(input.Selectors)), nil
+	}
+
+	if input.Selector == "" {
+		return "", fmt.Errorf("either 'selector' or 'selectors' is required")
+	}
+
+	if input.Observe {
+		result, err := t.browser.ClickWithChanges(ctx, input.Selector)
+		if err != nil {
+			return "", err
+		}
+		if !result.Success {
+			return "", fmt.Errorf("click failed: %s", result.Error)
+		}
+
+		output := "Click successful"
+		if result.Changes != nil {
+			changes := result.Changes
+			if changes.URLChanged {
+				output += fmt.Sprintf("\n✓ URL changed to: %s", changes.NewURL)
+			}
+			if changes.ModalOpened {
+				output += "\n✓ Modal/dialog opened"
+			}
+			if changes.ModalClosed {
+				output += "\n✓ Modal/dialog closed"
+			}
+			if len(changes.NewElements) > 0 {
+				output += fmt.Sprintf("\n✓ %d new elements appeared:", len(changes.NewElements))
+				for i, el := range changes.NewElements {
+					if i >= 10 {
+						output += fmt.Sprintf("\n  ... and %d more", len(changes.NewElements)-10)
+						break
+					}
+					label := el.Text
+					if label == "" {
+						label = el.AriaLabel
+					}
+					if label == "" {
+						label = el.Type
+					}
+					output += fmt.Sprintf("\n  - [%s] %s (selector: %s)", el.Type, label, el.Selector)
+				}
+			}
+			if changes.ElementsRemoved > 0 {
+				output += fmt.Sprintf("\n✓ %d elements removed", changes.ElementsRemoved)
+			}
+		}
+		return output, nil
+	}
+
 	if err := t.browser.Click(ctx, input.Selector); err != nil {
 		return "", err
 	}
@@ -99,7 +178,7 @@ func NewFillTool(browser output.BrowserPort, logger output.LoggerPort) *FillTool
 
 func (t *FillTool) Name() string { return "fill" }
 func (t *FillTool) Description() string {
-	return "Fill text into an input field or textarea using CSS selector. Use this to enter data into forms, search boxes, or text areas. First use ui_summary to find the correct selector. Clears existing content before filling. For submitting forms, use press_enter after filling or click on submit button."
+	return "Fill text into form fields. Supports single field or batch filling multiple fields. Use 'selector' and 'text' for single field, or 'fields' object for batch operations (up to 20 fields). Clears existing content before filling. All batch fills are executed without returning to LLM between fields. For submitting forms, use press_enter after filling or click on submit button."
 }
 func (t *FillTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
@@ -107,25 +186,49 @@ func (t *FillTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"selector": map[string]interface{}{
 				"type":        "string",
-				"description": "CSS selector for input",
+				"description": "CSS selector for single input field",
 			},
 			"text": map[string]interface{}{
 				"type":        "string",
-				"description": "Text to input",
+				"description": "Text to input into single field",
+			},
+			"fields": map[string]interface{}{
+				"type":        "object",
+				"description": "Map of CSS selectors to values for batch filling. Example: {\"#name\": \"John\", \"#email\": \"john@example.com\", \"#phone\": \"123-456-7890\"}",
+				"maxProperties": 20,
 			},
 		},
-		"required": []string{"selector", "text"},
+		"oneOf": []map[string]interface{}{
+			{"required": []string{"selector", "text"}},
+			{"required": []string{"fields"}},
+		},
 	}
 }
 
 func (t *FillTool) Execute(ctx context.Context, args string) (string, error) {
 	var input struct {
-		Selector string `json:"selector"`
-		Text     string `json:"text"`
+		Selector string            `json:"selector"`
+		Text     string            `json:"text"`
+		Fields   map[string]string `json:"fields"`
 	}
 	if err := json.Unmarshal([]byte(args), &input); err != nil {
 		return "", err
 	}
+
+	if len(input.Fields) > 0 {
+		if len(input.Fields) > 20 {
+			return "", fmt.Errorf("too many fields (max 20, got %d)", len(input.Fields))
+		}
+		if err := t.browser.BatchFill(ctx, input.Fields); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Successfully filled %d fields", len(input.Fields)), nil
+	}
+
+	if input.Selector == "" || input.Text == "" {
+		return "", fmt.Errorf("either ('selector' and 'text') or 'fields' is required")
+	}
+
 	if err := t.browser.Fill(ctx, input.Selector, input.Text); err != nil {
 		return "", err
 	}
@@ -557,3 +660,4 @@ func formatSearchResult(result *entity.SearchResult) string {
 		return "Unknown search type"
 	}
 }
+

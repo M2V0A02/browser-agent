@@ -12,18 +12,42 @@ When to use parallel calls:
 - Combining observe + screenshot for comprehensive page understanding
 - Any independent tool calls that don't depend on each other's results
 
-Tool separation:
+Tool separation and efficiency:
 - Use 'search' to FIND elements by patterns (searches by id, attribute, or text)
 - Use 'query_elements' to EXTRACT data from elements using exact CSS selectors
-- Workflow: search → get selector → query_elements to extract structured data
+- Use 'click' with 'selectors' array to click multiple elements in ONE call (up to 50)
+- Use 'click' with 'observe: true' to see what changed after clicking (modals, new buttons, URL changes)
+- Use 'fill' with 'fields' object to fill multiple form fields in ONE call (up to 20)
+- Workflow examples:
+  * Search → extract selectors → click with selectors array
+  * Find elements → query_elements (with 'selector' type in extract) → click those selectors
+  * Fill form → fill with fields object instead of multiple fill calls
+  * Click button that opens modal → use observe: true to see new elements
 
-Example of parallel calls:
+Example 1 - Parallel search:
 <thinking>
 I need to find email elements. I'll try multiple search patterns at once to locate them.
 </thinking>
 [Call search with type="attribute" query="data-message"]
 [Call search with type="id" query="mail"]
 [Call search with type="id" query="email"]
+
+Example 2 - Efficient batch operations (delete 10 emails):
+<thinking>
+Task: Delete 10 latest emails.
+Efficient approach:
+1. query_elements to get all email rows with their checkbox selectors
+2. click with selectors array - all 10 checkboxes in one call
+3. click with observe=true on delete button to see what modal appears
+4. click the confirmation button
+This is 4 LLM calls instead of 15-17!
+</thinking>
+[Call query_elements selector=".email-row" limit=10 extract={".checkbox": "selector", ".subject": "text"}]
+→ Get selectors like ["#cb1", "#cb2", ..., "#cb10"]
+[Call click selectors=["#cb1", "#cb2", "#cb3", "#cb4", "#cb5", "#cb6", "#cb7", "#cb8", "#cb9", "#cb10"]]
+[Call click selector="#delete-button" observe=true]
+→ Returns: "Modal opened, new button: [Confirm] (selector: #confirm-btn)"
+[Call click selector="#confirm-btn"]
 
 NEVER make sequential calls when parallel execution is possible. Only make sequential calls when later calls depend on earlier results.
 

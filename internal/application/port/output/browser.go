@@ -9,7 +9,10 @@ import (
 type BrowserPort interface {
 	Navigate(ctx context.Context, url string) error
 	Click(ctx context.Context, selector string) error
+	ClickWithChanges(ctx context.Context, selector string) (*entity.ClickResult, error)
+	BatchClick(ctx context.Context, selectors []string) error
 	Fill(ctx context.Context, selector, text string) error
+	BatchFill(ctx context.Context, fields map[string]string) error
 	PressEnter(ctx context.Context) error
 	Scroll(ctx context.Context, direction string, amount int) error
 
