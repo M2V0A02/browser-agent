@@ -4,11 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
+	"strings"
 
 	"browser-agent/internal/application/port/output"
 	"browser-agent/internal/domain/entity"
@@ -66,14 +65,35 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 
 	resp, err := t.base.RoundTrip(req)
 
-	if t.logger != nil && resp != nil {
-		t.logger.Info("HTTP Response",
-			"status", resp.Status,
-			"statusCode", resp.StatusCode,
-		)
+	if resp != nil && resp.Body != nil {
+		resp.Body = &reasoningFixerReader{
+			reader: resp.Body,
+			logger: t.logger,
+		}
 	}
 
 	return resp, err
+}
+
+type reasoningFixerReader struct {
+	reader io.ReadCloser
+	buffer bytes.Buffer
+	logger output.LoggerPort
+}
+
+func (r *reasoningFixerReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if n > 0 {
+		chunk := string(p[:n])
+		fixed := strings.ReplaceAll(chunk, `"reasoning":`, `"reasoning_content":`)
+		copy(p, fixed)
+		return len(fixed), err
+	}
+	return n, err
+}
+
+func (r *reasoningFixerReader) Close() error {
+	return r.reader.Close()
 }
 
 func NewOpenRouterAdapter(cfg Config) *OpenRouterAdapter {
@@ -101,6 +121,14 @@ func (a *OpenRouterAdapter) Chat(ctx context.Context, req output.ChatRequest) (*
 	messages := convertMessages(req.Messages)
 	tools := convertTools(req.Tools)
 
+	if a.logger != nil {
+		a.logger.Debug("Creating chat completion",
+			"model", a.model,
+			"messagesCount", len(messages),
+			"toolsCount", len(tools),
+			"temperature", req.Temperature)
+	}
+
 	resp, err := a.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model:       a.model,
 		Messages:    messages,
@@ -109,6 +137,9 @@ func (a *OpenRouterAdapter) Chat(ctx context.Context, req output.ChatRequest) (*
 		Temperature: req.Temperature,
 	})
 	if err != nil {
+		if a.logger != nil {
+			a.logger.Error("Chat completion failed", "error", err)
+		}
 		return nil, fmt.Errorf("chat completion failed: %w", err)
 	}
 
@@ -117,172 +148,36 @@ func (a *OpenRouterAdapter) Chat(ctx context.Context, req output.ChatRequest) (*
 	}
 
 	choice := resp.Choices[0]
-	return &output.ChatResponse{
-		Message: convertResponseMessage(choice.Message),
-	}, nil
-}
-
-func (a *OpenRouterAdapter) ChatStream(ctx context.Context, req output.ChatRequest, onChunk func(output.StreamChunk)) (*output.ChatResponse, error) {
-	messages := convertMessages(req.Messages)
-	tools := convertTools(req.Tools)
+	message := convertResponseMessage(choice.Message)
 
 	if a.logger != nil {
-		totalChars := 0
-		for _, msg := range messages {
-			totalChars += len(msg.Content)
-		}
-		a.logger.Debug("Creating chat completion stream",
-			"model", a.model,
-			"messagesCount", len(messages),
-			"toolsCount", len(tools),
-			"temperature", req.Temperature,
-			"totalChars", totalChars)
-	}
-
-	stream, err := a.client.CreateChatCompletionStream(ctx, openai.ChatCompletionRequest{
-		Model:       a.model,
-		Messages:    messages,
-		Tools:       tools,
-		ToolChoice:  "auto",
-		Temperature: req.Temperature,
-		Stream:      true,
-	})
-	if err != nil {
-		if a.logger != nil {
-			a.logger.Error("Failed to create stream", "error", err)
-		}
-		return nil, fmt.Errorf("chat stream failed: %w", err)
-	}
-	defer stream.Close()
-
-	var finalMessage entity.Message
-	finalMessage.Role = entity.RoleAssistant
-	toolCallsMap := make(map[int]*entity.ToolCall)
-	var thinkingContent string
-	var textContent string
-	chunkCount := 0
-
-	if a.logger != nil {
-		a.logger.Debug("Starting stream reception")
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("context canceled: %w", ctx.Err())
-		default:
+		toolCallsInfo := make([]map[string]string, 0, len(message.ToolCalls))
+		for _, tc := range message.ToolCalls {
+			toolCallsInfo = append(toolCallsInfo, map[string]string{
+				"id":   tc.ID,
+				"name": tc.Name,
+				"args": tc.Arguments,
+			})
 		}
 
-		chunk, err := stream.Recv()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				if a.logger != nil {
-					a.logger.Debug("Stream completed", "chunks", chunkCount, "thinkingLen", len(thinkingContent), "textLen", len(textContent))
-				}
-				break
-			}
-			if a.logger != nil {
-				a.logger.Error("Stream recv error", "error", err, "chunks", chunkCount, "errorType", fmt.Sprintf("%T", err))
-			}
-			return nil, fmt.Errorf("stream recv error: %w", err)
-		}
-
-		chunkCount++
-
-		if len(chunk.Choices) == 0 {
-			continue
-		}
-
-		delta := chunk.Choices[0].Delta
-
-		if delta.ReasoningContent != "" {
-			thinkingContent += delta.ReasoningContent
-		}
-
-		if delta.Content != "" {
-			textContent += delta.Content
-			if onChunk != nil {
-				onChunk(output.StreamChunk{
-					Content: delta.Content,
-				})
+		thinkingLen := 0
+		for _, block := range message.ContentBlocks {
+			if block.Type == entity.ContentTypeThinking {
+				thinkingLen += len(block.Thinking)
 			}
 		}
 
-		for _, tc := range delta.ToolCalls {
-			if tc.Index == nil {
-				continue
-			}
-			idx := *tc.Index
-			if existing, ok := toolCallsMap[idx]; ok {
-				existing.Arguments += tc.Function.Arguments
-				if tc.Function.Name != "" {
-					existing.Name = tc.Function.Name
-				}
-				if tc.ID != "" {
-					existing.ID = tc.ID
-				}
-			} else {
-				toolCallsMap[idx] = &entity.ToolCall{
-					ID:        tc.ID,
-					Name:      tc.Function.Name,
-					Arguments: tc.Function.Arguments,
-				}
-			}
-		}
-	}
-
-	if thinkingContent != "" {
-		if a.logger != nil {
-			a.logger.Debug("Received thinking content", "length", len(thinkingContent))
-		}
-		finalMessage.ContentBlocks = append(finalMessage.ContentBlocks, entity.ContentBlock{
-			Type:     entity.ContentTypeThinking,
-			Thinking: thinkingContent,
-		})
-	}
-
-	if textContent != "" {
-		if a.logger != nil {
-			a.logger.Debug("Received text content", "length", len(textContent))
-		}
-		finalMessage.ContentBlocks = append(finalMessage.ContentBlocks, entity.ContentBlock{
-			Type: entity.ContentTypeText,
-			Text: textContent,
-		})
-		finalMessage.Content = textContent
-	}
-
-	if a.logger != nil {
-		a.logger.Debug("Final message assembled",
-			"contentBlocksCount", len(finalMessage.ContentBlocks),
-			"toolCallsCount", len(finalMessage.ToolCalls),
-			"contentLength", len(finalMessage.Content))
-	}
-
-	indices := make([]int, 0, len(toolCallsMap))
-	for idx := range toolCallsMap {
-		indices = append(indices, idx)
-	}
-	sort.Ints(indices)
-
-	for _, idx := range indices {
-		tc := toolCallsMap[idx]
-		finalMessage.ToolCalls = append(finalMessage.ToolCalls, *tc)
-		finalMessage.ContentBlocks = append(finalMessage.ContentBlocks, entity.ContentBlock{
-			Type:    entity.ContentTypeToolUse,
-			ToolUse: tc,
-		})
-	}
-
-	if onChunk != nil {
-		onChunk(output.StreamChunk{
-			ToolCalls: finalMessage.ToolCalls,
-			Done:      true,
-		})
+		a.logger.Info("LLM Response received",
+			"role", message.Role,
+			"content", message.Content,
+			"toolCalls", toolCallsInfo,
+			"contentBlocksCount", len(message.ContentBlocks),
+			"thinkingLen", thinkingLen,
+		)
 	}
 
 	return &output.ChatResponse{
-		Message: finalMessage,
+		Message: message,
 	}, nil
 }
 
@@ -350,6 +245,13 @@ func convertResponseMessage(msg openai.ChatCompletionMessage) entity.Message {
 	result := entity.Message{
 		Role:    entity.MessageRole(msg.Role),
 		Content: msg.Content,
+	}
+
+	if msg.ReasoningContent != "" {
+		result.ContentBlocks = append(result.ContentBlocks, entity.ContentBlock{
+			Type:     entity.ContentTypeThinking,
+			Thinking: msg.ReasoningContent,
+		})
 	}
 
 	if msg.Content != "" {

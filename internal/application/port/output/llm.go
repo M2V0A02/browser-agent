@@ -8,7 +8,6 @@ import (
 
 type LLMPort interface {
 	Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error)
-	ChatStream(ctx context.Context, req ChatRequest, onChunk func(StreamChunk)) (*ChatResponse, error)
 }
 
 type ChatRequest struct {
@@ -19,10 +18,4 @@ type ChatRequest struct {
 
 type ChatResponse struct {
 	Message entity.Message
-}
-
-type StreamChunk struct {
-	Content   string
-	ToolCalls []entity.ToolCall
-	Done      bool
 }

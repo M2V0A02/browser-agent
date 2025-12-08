@@ -269,7 +269,7 @@ func NewAskQuestionTool(userInteraction output.UserInteractionPort, logger outpu
 
 func (t *AskQuestionTool) Name() string { return "ask_question" }
 func (t *AskQuestionTool) Description() string {
-	return "Ask the user a question and wait for their response. Use this when you need information from the user to proceed with the task, such as credentials, preferences, or clarifications. The tool will pause execution until the user provides an answer. Returns the user's text response."
+	return "Ask the user a question and wait for their response. Use this for gathering preferences, clarifications, or non-sensitive information. Authentication and credentials are handled automatically by the system - do not request them through this tool. Returns the user's text response."
 }
 func (t *AskQuestionTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
