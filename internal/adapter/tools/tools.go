@@ -401,7 +401,7 @@ func NewQueryElementsTool(browser output.BrowserPort, logger output.LoggerPort) 
 
 func (t *QueryElementsTool) Name() string { return "query_elements" }
 func (t *QueryElementsTool) Description() string {
-	return "Query and extract structured data from multiple elements on the page. Use this when you need to extract information from lists, tables, or repeated elements like emails, products, news items, etc. Supports CSS selectors and can extract text, HTML, or attributes from nested elements. Returns structured JSON data that's easy to analyze and process."
+	return "Extract structured data from repeated elements using exact CSS selector. Extracts ALL needed data from multiple elements including nested element selectors for later clicks. Perfect for emails, products, news items when you know the exact selector. Use 'search' tool first if you need to find elements by pattern. Returns compact text format. For multiple selectors, call this tool multiple times in parallel."
 }
 func (t *QueryElementsTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
@@ -409,15 +409,15 @@ func (t *QueryElementsTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"selector": map[string]interface{}{
 				"type":        "string",
-				"description": "CSS selector to find the main elements (e.g., '.mail-item', 'article.post', 'tr.product-row')",
+				"description": "Exact CSS selector for target elements. Example: '.mail-item', 'tr.email', 'div[data-message]'",
 			},
 			"limit": map[string]interface{}{
 				"type":        "number",
-				"description": "Maximum number of elements to return (default: 20, max: 100)",
+				"description": "Maximum elements to return (default: 20, max: 100)",
 			},
 			"extract": map[string]interface{}{
-				"type": "object",
-				"description": "Map of sub-selectors to extraction types. Key is CSS selector relative to each main element, value is extraction type: 'text' (innerText), 'html' (innerHTML), or 'attr:name' (attribute). Use '_self' as key to extract from the main element itself. Example: {'.sender': 'text', '.date': 'text', '_self': 'attr:data-id'}",
+				"type":        "object",
+				"description": "Map of sub-selectors to extraction types. Types: 'text' (innerText), 'html' (innerHTML), 'selector' (returns selector for later click!), 'attr:name' (attribute). Use '_self' for main element. Example: {'.sender': 'text', '.subject': 'text', 'button.delete': 'selector', '_self': 'attr:data-id'}",
 			},
 		},
 		"required": []string{"selector", "extract"},
@@ -466,4 +466,94 @@ func formatQueryResult(result *entity.QueryElementsResult) string {
 	}
 
 	return output
+}
+
+type SearchTool struct {
+	browser output.BrowserPort
+	logger  output.LoggerPort
+}
+
+func NewSearchTool(browser output.BrowserPort, logger output.LoggerPort) *SearchTool {
+	return &SearchTool{browser: browser, logger: logger}
+}
+
+func (t *SearchTool) Name() string { return "search" }
+func (t *SearchTool) Description() string {
+	return "Search for information on the page with minimal output. Three search types: 1) 'text' - finds text content and returns up to 1000 characters with context; 2) 'id' - finds elements by id (or partial id match) and returns their attributes without children; 3) 'attribute' - finds elements by attribute name/value and returns element with selector. Use this for simple searches when you need concise results."
+}
+func (t *SearchTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"type": map[string]interface{}{
+				"type":        "string",
+				"enum":        []string{"text", "id", "attribute"},
+				"description": "Search type: 'text' (search for text content), 'id' (search by element id), 'attribute' (search by attribute)",
+			},
+			"query": map[string]interface{}{
+				"type":        "string",
+				"description": "Search query. For 'text' - text to find. For 'id' - id or partial id. For 'attribute' - attribute name or 'name=value' format",
+			},
+		},
+		"required": []string{"type", "query"},
+	}
+}
+
+func (t *SearchTool) Execute(ctx context.Context, args string) (string, error) {
+	var req entity.SearchRequest
+	if err := json.Unmarshal([]byte(args), &req); err != nil {
+		return "", fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if req.Type == "" {
+		return "", fmt.Errorf("type is required")
+	}
+
+	if req.Query == "" {
+		return "", fmt.Errorf("query is required")
+	}
+
+	result, err := t.browser.Search(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	return formatSearchResult(result), nil
+}
+
+func formatSearchResult(result *entity.SearchResult) string {
+	if !result.Found {
+		return fmt.Sprintf("No results found for %s search", result.Type)
+	}
+
+	switch result.Type {
+	case "text":
+		return fmt.Sprintf("Found text:\n\n%s", result.Content)
+
+	case "id", "attribute":
+		if len(result.Elements) == 0 {
+			return fmt.Sprintf("No elements found for %s search", result.Type)
+		}
+
+		output := fmt.Sprintf("Found %d element(s):\n\n", len(result.Elements))
+		for i, elem := range result.Elements {
+			output += fmt.Sprintf("#%d [%s]\n", i+1, elem.Selector)
+			if elem.ID != "" {
+				output += fmt.Sprintf("  id: %q\n", elem.ID)
+			}
+			if len(elem.Attributes) > 0 {
+				output += "  attributes:\n"
+				for k, v := range elem.Attributes {
+					if v != "" {
+						output += fmt.Sprintf("    %s: %q\n", k, v)
+					}
+				}
+			}
+			output += "\n"
+		}
+		return output
+
+	default:
+		return "Unknown search type"
+	}
 }

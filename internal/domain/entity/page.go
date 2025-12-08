@@ -47,3 +47,21 @@ type ElementData struct {
 	Selector string
 	Data     map[string]string
 }
+
+type SearchRequest struct {
+	Type  string
+	Query string
+}
+
+type SearchResult struct {
+	Type     string
+	Found    bool
+	Content  string
+	Elements []SearchElement
+}
+
+type SearchElement struct {
+	ID         string
+	Selector   string
+	Attributes map[string]string
+}

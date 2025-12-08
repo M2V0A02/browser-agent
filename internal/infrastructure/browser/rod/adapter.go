@@ -467,43 +467,49 @@ func (b *BrowserAdapter) QueryElements(ctx context.Context, req entity.QueryElem
 	defer cancel()
 
 	jsCode := `(selector, limit, extractConfig) => {
-		const elements = Array.from(document.querySelectorAll(selector)).slice(0, limit);
+		const found = document.querySelectorAll(selector);
+		const elements = Array.from(found).slice(0, limit);
 
 		return elements.map((element, index) => {
 			const data = {};
 
 			for (const [subSelector, extractType] of Object.entries(extractConfig)) {
 				try {
-					if (subSelector === '_self') {
-						if (extractType === 'text') {
-							data[subSelector] = element.innerText?.trim() || '';
-						} else if (extractType === 'html') {
-							data[subSelector] = element.innerHTML || '';
-						} else if (extractType.startsWith('attr:')) {
-							const attrName = extractType.substring(5);
-							data[subSelector] = element.getAttribute(attrName) || '';
-						}
-					} else {
-						const subElement = element.querySelector(subSelector);
-						if (subElement) {
-							if (extractType === 'text') {
-								data[subSelector] = subElement.innerText?.trim() || '';
-							} else if (extractType === 'html') {
-								data[subSelector] = subElement.innerHTML || '';
-							} else if (extractType.startsWith('attr:')) {
-								const attrName = extractType.substring(5);
-								data[subSelector] = subElement.getAttribute(attrName) || '';
+					const targetEl = (subSelector === '_self') ? element : element.querySelector(subSelector);
+
+					if (!targetEl && subSelector !== '_self') {
+						data[subSelector] = '';
+						continue;
+					}
+
+					if (extractType === 'text') {
+						data[subSelector] = targetEl.innerText?.trim() || '';
+					} else if (extractType === 'html') {
+						data[subSelector] = targetEl.innerHTML || '';
+					} else if (extractType === 'selector') {
+						// Возвращаем селектор элемента для последующего клика
+						if (targetEl.id) {
+							data[subSelector] = '#' + targetEl.id;
+						} else if (targetEl.className) {
+							const classes = targetEl.className.split(' ').filter(c => c).join('.');
+							if (classes) {
+								data[subSelector] = targetEl.tagName.toLowerCase() + '.' + classes;
+							} else {
+								data[subSelector] = targetEl.tagName.toLowerCase();
 							}
 						} else {
-							data[subSelector] = '';
+							data[subSelector] = targetEl.tagName.toLowerCase();
 						}
+					} else if (extractType.startsWith('attr:')) {
+						const attrName = extractType.substring(5);
+						data[subSelector] = targetEl.getAttribute(attrName) || '';
 					}
 				} catch (e) {
 					data[subSelector] = '';
 				}
 			}
 
-			let elementSelector = selector + ':nth-of-type(' + (index + 1) + ')';
+			let elementSelector = '';
 			if (element.id) {
 				elementSelector = '#' + element.id;
 			} else if (element.className) {
@@ -562,6 +568,278 @@ func (b *BrowserAdapter) QueryElements(ctx context.Context, req entity.QueryElem
 	return &entity.QueryElementsResult{
 		Elements: elements,
 		Count:    len(elements),
+	}, nil
+}
+
+func (b *BrowserAdapter) Search(ctx context.Context, req entity.SearchRequest) (*entity.SearchResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if err := b.checkState(); err != nil {
+		return nil, err
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, b.timeout)
+	defer cancel()
+
+	switch req.Type {
+	case "text":
+		return b.searchByText(timeoutCtx, req.Query)
+	case "id":
+		return b.searchByID(timeoutCtx, req.Query)
+	case "attribute":
+		return b.searchByAttribute(timeoutCtx, req.Query)
+	default:
+		return nil, fmt.Errorf("invalid search type: %s, must be 'text', 'id', or 'attribute'", req.Type)
+	}
+}
+
+func (b *BrowserAdapter) searchByText(ctx context.Context, query string) (*entity.SearchResult, error) {
+	jsCode := `(searchText) => {
+		const walker = document.createTreeWalker(
+			document.body,
+			NodeFilter.SHOW_TEXT,
+			{
+				acceptNode: function(node) {
+					if (node.nodeValue.trim().length === 0) return NodeFilter.FILTER_REJECT;
+					const parent = node.parentElement;
+					if (!parent) return NodeFilter.FILTER_REJECT;
+					const style = window.getComputedStyle(parent);
+					if (style.display === 'none' || style.visibility === 'hidden') return NodeFilter.FILTER_REJECT;
+					return NodeFilter.FILTER_ACCEPT;
+				}
+			}
+		);
+
+		const searchLower = searchText.toLowerCase();
+		const matches = [];
+		let node;
+
+		while (node = walker.nextNode()) {
+			const text = node.nodeValue;
+			const textLower = text.toLowerCase();
+			const index = textLower.indexOf(searchLower);
+
+			if (index !== -1) {
+				const start = Math.max(0, index - 100);
+				const end = Math.min(text.length, index + searchText.length + 100);
+				const context = text.substring(start, end);
+				matches.push((start > 0 ? '...' : '') + context + (end < text.length ? '...' : ''));
+			}
+		}
+
+		return matches;
+	}`
+
+	result, err := b.page.Context(ctx).Eval(jsCode, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search text: %w", err)
+	}
+
+	var matches []string
+	if err := result.Value.Unmarshal(&matches); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal text search results: %w", err)
+	}
+
+	if len(matches) == 0 {
+		return &entity.SearchResult{
+			Type:    "text",
+			Found:   false,
+			Content: "",
+		}, nil
+	}
+
+	totalLength := 0
+	content := ""
+	for i, match := range matches {
+		if totalLength+len(match) > 1000 {
+			break
+		}
+		if i > 0 {
+			content += "\n---\n"
+			totalLength += 5
+		}
+		content += match
+		totalLength += len(match)
+	}
+
+	return &entity.SearchResult{
+		Type:    "text",
+		Found:   true,
+		Content: content,
+	}, nil
+}
+
+func (b *BrowserAdapter) searchByID(ctx context.Context, id string) (*entity.SearchResult, error) {
+	jsCode := `(id) => {
+		const elements = document.querySelectorAll('[id*="' + id + '"]');
+		return Array.from(elements).map(el => {
+			const attrs = {};
+			for (const attr of el.attributes) {
+				attrs[attr.name] = attr.value;
+			}
+
+			let selector = '';
+			if (el.id) {
+				selector = '#' + el.id;
+			} else if (el.className) {
+				const classes = el.className.split(' ').filter(c => c).join('.');
+				if (classes) {
+					selector = el.tagName.toLowerCase() + '.' + classes;
+				} else {
+					selector = el.tagName.toLowerCase();
+				}
+			} else {
+				selector = el.tagName.toLowerCase();
+			}
+
+			return {
+				id: el.id,
+				selector: selector,
+				attributes: attrs
+			};
+		});
+	}`
+
+	result, err := b.page.Context(ctx).Eval(jsCode, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search by id: %w", err)
+	}
+
+	var rawElements []map[string]interface{}
+	if err := result.Value.Unmarshal(&rawElements); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal id search results: %w", err)
+	}
+
+	if len(rawElements) == 0 {
+		return &entity.SearchResult{
+			Type:     "id",
+			Found:    false,
+			Elements: []entity.SearchElement{},
+		}, nil
+	}
+
+	elements := make([]entity.SearchElement, 0, len(rawElements))
+	for _, raw := range rawElements {
+		elem := entity.SearchElement{
+			Attributes: make(map[string]string),
+		}
+
+		if id, ok := raw["id"].(string); ok {
+			elem.ID = id
+		}
+
+		if selector, ok := raw["selector"].(string); ok {
+			elem.Selector = selector
+		}
+
+		if attrs, ok := raw["attributes"].(map[string]interface{}); ok {
+			for k, v := range attrs {
+				if strVal, ok := v.(string); ok {
+					elem.Attributes[k] = strVal
+				}
+			}
+		}
+
+		elements = append(elements, elem)
+	}
+
+	return &entity.SearchResult{
+		Type:     "id",
+		Found:    true,
+		Elements: elements,
+	}, nil
+}
+
+func (b *BrowserAdapter) searchByAttribute(ctx context.Context, query string) (*entity.SearchResult, error) {
+	jsCode := `(attrQuery) => {
+		const parts = attrQuery.split('=');
+		const attrName = parts[0].trim();
+		const attrValue = parts.length > 1 ? parts[1].trim() : '';
+
+		let elements;
+		if (attrValue) {
+			elements = document.querySelectorAll('[' + attrName + '*="' + attrValue + '"]');
+		} else {
+			elements = document.querySelectorAll('[' + attrName + ']');
+		}
+
+		return Array.from(elements).map(el => {
+			const attrs = {};
+			for (const attr of el.attributes) {
+				attrs[attr.name] = attr.value;
+			}
+
+			let selector = '';
+			if (el.id) {
+				selector = '#' + el.id;
+			} else if (el.className) {
+				const classes = el.className.split(' ').filter(c => c).join('.');
+				if (classes) {
+					selector = el.tagName.toLowerCase() + '.' + classes;
+				} else {
+					selector = el.tagName.toLowerCase();
+				}
+			} else {
+				selector = el.tagName.toLowerCase();
+			}
+
+			return {
+				id: el.id,
+				selector: selector,
+				attributes: attrs
+			};
+		});
+	}`
+
+	result, err := b.page.Context(ctx).Eval(jsCode, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search by attribute: %w", err)
+	}
+
+	var rawElements []map[string]interface{}
+	if err := result.Value.Unmarshal(&rawElements); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal attribute search results: %w", err)
+	}
+
+	if len(rawElements) == 0 {
+		return &entity.SearchResult{
+			Type:     "attribute",
+			Found:    false,
+			Elements: []entity.SearchElement{},
+		}, nil
+	}
+
+	elements := make([]entity.SearchElement, 0, len(rawElements))
+	for _, raw := range rawElements {
+		elem := entity.SearchElement{
+			Attributes: make(map[string]string),
+		}
+
+		if id, ok := raw["id"].(string); ok {
+			elem.ID = id
+		}
+
+		if selector, ok := raw["selector"].(string); ok {
+			elem.Selector = selector
+		}
+
+		if attrs, ok := raw["attributes"].(map[string]interface{}); ok {
+			for k, v := range attrs {
+				if strVal, ok := v.(string); ok {
+					elem.Attributes[k] = strVal
+				}
+			}
+		}
+
+		elements = append(elements, elem)
+	}
+
+	return &entity.SearchResult{
+		Type:     "attribute",
+		Found:    true,
+		Elements: elements,
 	}, nil
 }
 

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"browser-agent/internal/domain/entity"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -862,4 +864,285 @@ func TestBrowserAdapter_GetPageText(t *testing.T) {
 	assert.NotContains(t, text, "<h1>")
 	assert.NotContains(t, text, "<script>")
 	assert.NotContains(t, text, "console.log")
+}
+
+func TestBrowserAdapter_Search_Text(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<!DOCTYPE html>
+<html>
+<body>
+	<h1>Test Page</h1>
+	<p>This is a unique paragraph with special text.</p>
+	<div>Another section with different content.</div>
+</body>
+</html>`)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	cfg := DefaultConfig()
+	cfg.Headless = true
+	cfg.SlowMotion = 0
+
+	adapter, err := NewBrowserAdapter(ctx, cfg)
+	require.NoError(t, err)
+	defer adapter.Close()
+
+	err = adapter.Navigate(ctx, server.URL)
+	require.NoError(t, err)
+
+	result, err := adapter.Search(ctx, entity.SearchRequest{
+		Type:  "text",
+		Query: "unique paragraph",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.True(t, result.Found)
+	assert.Equal(t, "text", result.Type)
+	assert.Contains(t, result.Content, "unique paragraph")
+	assert.Contains(t, result.Content, "special text")
+}
+
+func TestBrowserAdapter_Search_Text_NotFound(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<!DOCTYPE html><html><body><p>Some text</p></body></html>`)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	cfg := DefaultConfig()
+	cfg.Headless = true
+	cfg.SlowMotion = 0
+
+	adapter, err := NewBrowserAdapter(ctx, cfg)
+	require.NoError(t, err)
+	defer adapter.Close()
+
+	err = adapter.Navigate(ctx, server.URL)
+	require.NoError(t, err)
+
+	result, err := adapter.Search(ctx, entity.SearchRequest{
+		Type:  "text",
+		Query: "nonexistent text",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.False(t, result.Found)
+	assert.Equal(t, "text", result.Type)
+}
+
+func TestBrowserAdapter_Search_ID(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<!DOCTYPE html>
+<html>
+<body>
+	<div id="main-container" class="container" data-test="value1">Main Content</div>
+	<button id="submit-button" type="submit">Submit</button>
+	<input id="email-input" type="email" name="email">
+</body>
+</html>`)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	cfg := DefaultConfig()
+	cfg.Headless = true
+	cfg.SlowMotion = 0
+
+	adapter, err := NewBrowserAdapter(ctx, cfg)
+	require.NoError(t, err)
+	defer adapter.Close()
+
+	err = adapter.Navigate(ctx, server.URL)
+	require.NoError(t, err)
+
+	result, err := adapter.Search(ctx, entity.SearchRequest{
+		Type:  "id",
+		Query: "submit",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.True(t, result.Found)
+	assert.Equal(t, "id", result.Type)
+	assert.Greater(t, len(result.Elements), 0)
+
+	found := false
+	for _, elem := range result.Elements {
+		if elem.ID == "submit-button" {
+			found = true
+			assert.Equal(t, "#submit-button", elem.Selector)
+			assert.Equal(t, "submit", elem.Attributes["type"])
+			break
+		}
+	}
+	assert.True(t, found, "Expected to find submit-button element")
+}
+
+func TestBrowserAdapter_Search_ID_NotFound(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<!DOCTYPE html><html><body><div id="test">Test</div></body></html>`)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	cfg := DefaultConfig()
+	cfg.Headless = true
+	cfg.SlowMotion = 0
+
+	adapter, err := NewBrowserAdapter(ctx, cfg)
+	require.NoError(t, err)
+	defer adapter.Close()
+
+	err = adapter.Navigate(ctx, server.URL)
+	require.NoError(t, err)
+
+	result, err := adapter.Search(ctx, entity.SearchRequest{
+		Type:  "id",
+		Query: "nonexistent",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.False(t, result.Found)
+	assert.Equal(t, "id", result.Type)
+}
+
+func TestBrowserAdapter_Search_Attribute(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<!DOCTYPE html>
+<html>
+<body>
+	<div data-testid="component-1" class="test">Component 1</div>
+	<div data-testid="component-2" class="test">Component 2</div>
+	<button data-action="submit" type="submit">Submit</button>
+</body>
+</html>`)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	cfg := DefaultConfig()
+	cfg.Headless = true
+	cfg.SlowMotion = 0
+
+	adapter, err := NewBrowserAdapter(ctx, cfg)
+	require.NoError(t, err)
+	defer adapter.Close()
+
+	err = adapter.Navigate(ctx, server.URL)
+	require.NoError(t, err)
+
+	result, err := adapter.Search(ctx, entity.SearchRequest{
+		Type:  "attribute",
+		Query: "data-testid=component",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.True(t, result.Found)
+	assert.Equal(t, "attribute", result.Type)
+	assert.Equal(t, 2, len(result.Elements))
+
+	for _, elem := range result.Elements {
+		assert.Contains(t, elem.Attributes["data-testid"], "component")
+	}
+}
+
+func TestBrowserAdapter_Search_Attribute_NameOnly(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<!DOCTYPE html>
+<html>
+<body>
+	<button data-action="submit">Submit</button>
+	<button data-action="cancel">Cancel</button>
+	<div>No action</div>
+</body>
+</html>`)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	cfg := DefaultConfig()
+	cfg.Headless = true
+	cfg.SlowMotion = 0
+
+	adapter, err := NewBrowserAdapter(ctx, cfg)
+	require.NoError(t, err)
+	defer adapter.Close()
+
+	err = adapter.Navigate(ctx, server.URL)
+	require.NoError(t, err)
+
+	result, err := adapter.Search(ctx, entity.SearchRequest{
+		Type:  "attribute",
+		Query: "data-action",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.True(t, result.Found)
+	assert.Equal(t, "attribute", result.Type)
+	assert.Equal(t, 2, len(result.Elements))
+
+	for _, elem := range result.Elements {
+		assert.NotEmpty(t, elem.Attributes["data-action"])
+	}
+}
+
+func TestBrowserAdapter_Search_InvalidType(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<!DOCTYPE html><html><body><p>Test</p></body></html>`)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	cfg := DefaultConfig()
+	cfg.Headless = true
+	cfg.SlowMotion = 0
+
+	adapter, err := NewBrowserAdapter(ctx, cfg)
+	require.NoError(t, err)
+	defer adapter.Close()
+
+	err = adapter.Navigate(ctx, server.URL)
+	require.NoError(t, err)
+
+	_, err = adapter.Search(ctx, entity.SearchRequest{
+		Type:  "invalid",
+		Query: "test",
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid search type")
 }
