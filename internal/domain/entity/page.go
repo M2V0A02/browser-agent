@@ -32,9 +32,9 @@ type PageContext struct {
 }
 
 type QueryElementsRequest struct {
-	Selector string
-	Limit    int
-	Extract  map[string]string
+	Selector string            `json:"selector"`
+	Limit    int               `json:"limit"`
+	Extract  map[string]string `json:"extract"`
 }
 
 type QueryElementsResult struct {
@@ -49,8 +49,8 @@ type ElementData struct {
 }
 
 type SearchRequest struct {
-	Type  string
-	Query string
+	Type  string `json:"type"`
+	Query string `json:"query"`
 }
 
 type SearchResult struct {

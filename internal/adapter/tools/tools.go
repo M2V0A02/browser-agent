@@ -305,35 +305,6 @@ func (t *ScreenshotTool) Execute(ctx context.Context, args string) (string, erro
 	return fmt.Sprintf("data:image/%s;base64,%s", screenshot.Format, b64), nil
 }
 
-type ExtractTool struct {
-	browser output.BrowserPort
-	logger  output.LoggerPort
-}
-
-func NewExtractTool(browser output.BrowserPort, logger output.LoggerPort) *ExtractTool {
-	return &ExtractTool{browser: browser, logger: logger}
-}
-
-func (t *ExtractTool) Name() string { return "extract" }
-func (t *ExtractTool) Description() string {
-	return "Extract the text content of the current page. Returns clean text without HTML tags, scripts, or styles. Use this when you need to read page content, extract specific data, or analyze text information. For interactive elements info, use ui_summary instead. For visual verification, use screenshot. This returns only visible text content."
-}
-func (t *ExtractTool) Parameters() map[string]interface{} {
-	return map[string]interface{}{
-		"type":       "object",
-		"properties": map[string]interface{}{},
-		"required":   []string{},
-	}
-}
-
-func (t *ExtractTool) Execute(ctx context.Context, args string) (string, error) {
-	text, err := t.browser.GetPageText(ctx)
-	if err != nil {
-		return "", err
-	}
-	return text, nil
-}
-
 type PressEnterTool struct {
 	browser output.BrowserPort
 	logger  output.LoggerPort
@@ -528,17 +499,27 @@ func (t *QueryElementsTool) Parameters() map[string]interface{} {
 }
 
 func (t *QueryElementsTool) Execute(ctx context.Context, args string) (string, error) {
-	var req entity.QueryElementsRequest
-	if err := json.Unmarshal([]byte(args), &req); err != nil {
+	var input struct {
+		Selector string            `json:"selector"`
+		Limit    float64           `json:"limit"`
+		Extract  map[string]string `json:"extract"`
+	}
+	if err := json.Unmarshal([]byte(args), &input); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	if req.Selector == "" {
+	if input.Selector == "" {
 		return "", fmt.Errorf("selector is required")
 	}
 
-	if len(req.Extract) == 0 {
+	if len(input.Extract) == 0 {
 		return "", fmt.Errorf("extract map is required and must not be empty")
+	}
+
+	req := entity.QueryElementsRequest{
+		Selector: input.Selector,
+		Limit:    int(input.Limit),
+		Extract:  input.Extract,
 	}
 
 	result, err := t.browser.QueryElements(ctx, req)

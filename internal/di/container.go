@@ -94,7 +94,6 @@ func registerBrowserTools(registry *service.ToolRegistryImpl, browser output.Bro
 	registry.Register(tool.NewFillTool(browser, log))
 	registry.Register(tool.NewScrollTool(browser, log))
 	registry.Register(tool.NewScreenshotTool(browser, log))
-	registry.Register(tool.NewExtractTool(browser, log))
 	registry.Register(tool.NewPressEnterTool(browser, log))
 	registry.Register(tool.NewObserveTool(browser, log))
 	registry.Register(tool.NewQueryElementsTool(browser, log))

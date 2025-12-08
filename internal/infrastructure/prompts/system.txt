@@ -6,12 +6,6 @@ Parallel Tool Execution
 
 CRITICAL: You can and SHOULD call multiple tools in PARALLEL in a single response when the calls are independent. This significantly speeds up task execution.
 
-When to use parallel calls:
-- Multiple query_elements with different selectors to try different strategies
-- Multiple search calls with different patterns to find elements
-- Combining observe + screenshot for comprehensive page understanding
-- Any independent tool calls that don't depend on each other's results
-
 Tool separation and efficiency:
 - Use 'search' to FIND elements by patterns (searches by id, attribute, or text)
 - Use 'query_elements' to EXTRACT data from elements using exact CSS selectors
@@ -31,23 +25,6 @@ I need to find email elements. I'll try multiple search patterns at once to loca
 [Call search with type="attribute" query="data-message"]
 [Call search with type="id" query="mail"]
 [Call search with type="id" query="email"]
-
-Example 2 - Efficient batch operations (delete 10 emails):
-<thinking>
-Task: Delete 10 latest emails.
-Efficient approach:
-1. query_elements to get all email rows with their checkbox selectors
-2. click with selectors array - all 10 checkboxes in one call
-3. click with observe=true on delete button to see what modal appears
-4. click the confirmation button
-This is 4 LLM calls instead of 15-17!
-</thinking>
-[Call query_elements selector=".email-row" limit=10 extract={".checkbox": "selector", ".subject": "text"}]
-→ Get selectors like ["#cb1", "#cb2", ..., "#cb10"]
-[Call click selectors=["#cb1", "#cb2", "#cb3", "#cb4", "#cb5", "#cb6", "#cb7", "#cb8", "#cb9", "#cb10"]]
-[Call click selector="#delete-button" observe=true]
-→ Returns: "Modal opened, new button: [Confirm] (selector: #confirm-btn)"
-[Call click selector="#confirm-btn"]
 
 NEVER make sequential calls when parallel execution is possible. Only make sequential calls when later calls depend on earlier results.
 
