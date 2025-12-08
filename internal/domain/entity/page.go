@@ -30,3 +30,20 @@ type PageContext struct {
 	TextContent     string
 	ElementCount    int
 }
+
+type QueryElementsRequest struct {
+	Selector string
+	Limit    int
+	Extract  map[string]string
+}
+
+type QueryElementsResult struct {
+	Elements []ElementData
+	Count    int
+}
+
+type ElementData struct {
+	Index    int
+	Selector string
+	Data     map[string]string
+}

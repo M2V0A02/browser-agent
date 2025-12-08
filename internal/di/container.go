@@ -97,6 +97,7 @@ func registerBrowserTools(registry *service.ToolRegistryImpl, browser output.Bro
 	registry.Register(tool.NewExtractTool(browser, log))
 	registry.Register(tool.NewPressEnterTool(browser, log))
 	registry.Register(tool.NewObserveTool(browser, log))
+	registry.Register(tool.NewQueryElementsTool(browser, log))
 }
 
 func registerUserInteractionTools(registry *service.ToolRegistryImpl, userInteraction output.UserInteractionPort, log output.LoggerPort) {

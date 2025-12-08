@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"browser-agent/internal/application/port/output"
+	"browser-agent/internal/domain/entity"
 )
 
 type NavigateTool struct {
@@ -387,4 +388,82 @@ INTERACTIVE ELEMENTS:
 	result += fmt.Sprintf("\nPAGE CONTENT PREVIEW:\n%s\n", pageCtx.TextContent)
 
 	return result, nil
+}
+
+type QueryElementsTool struct {
+	browser output.BrowserPort
+	logger  output.LoggerPort
+}
+
+func NewQueryElementsTool(browser output.BrowserPort, logger output.LoggerPort) *QueryElementsTool {
+	return &QueryElementsTool{browser: browser, logger: logger}
+}
+
+func (t *QueryElementsTool) Name() string { return "query_elements" }
+func (t *QueryElementsTool) Description() string {
+	return "Query and extract structured data from multiple elements on the page. Use this when you need to extract information from lists, tables, or repeated elements like emails, products, news items, etc. Supports CSS selectors and can extract text, HTML, or attributes from nested elements. Returns structured JSON data that's easy to analyze and process."
+}
+func (t *QueryElementsTool) Parameters() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"selector": map[string]interface{}{
+				"type":        "string",
+				"description": "CSS selector to find the main elements (e.g., '.mail-item', 'article.post', 'tr.product-row')",
+			},
+			"limit": map[string]interface{}{
+				"type":        "number",
+				"description": "Maximum number of elements to return (default: 20, max: 100)",
+			},
+			"extract": map[string]interface{}{
+				"type": "object",
+				"description": "Map of sub-selectors to extraction types. Key is CSS selector relative to each main element, value is extraction type: 'text' (innerText), 'html' (innerHTML), or 'attr:name' (attribute). Use '_self' as key to extract from the main element itself. Example: {'.sender': 'text', '.date': 'text', '_self': 'attr:data-id'}",
+			},
+		},
+		"required": []string{"selector", "extract"},
+	}
+}
+
+func (t *QueryElementsTool) Execute(ctx context.Context, args string) (string, error) {
+	var req entity.QueryElementsRequest
+	if err := json.Unmarshal([]byte(args), &req); err != nil {
+		return "", fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if req.Selector == "" {
+		return "", fmt.Errorf("selector is required")
+	}
+
+	if len(req.Extract) == 0 {
+		return "", fmt.Errorf("extract map is required and must not be empty")
+	}
+
+	result, err := t.browser.QueryElements(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	return formatQueryResult(result), nil
+}
+
+func formatQueryResult(result *entity.QueryElementsResult) string {
+	if result.Count == 0 {
+		return "No elements found"
+	}
+
+	output := fmt.Sprintf("Found %d elements:\n\n", result.Count)
+
+	for i, elem := range result.Elements {
+		output += fmt.Sprintf("#%d [%s]\n", i+1, elem.Selector)
+
+		for key, value := range elem.Data {
+			if value != "" {
+				output += fmt.Sprintf("  %s: %q\n", key, value)
+			}
+		}
+
+		output += "\n"
+	}
+
+	return output
 }

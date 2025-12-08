@@ -18,6 +18,7 @@ type BrowserPort interface {
 	GetUIElements(ctx context.Context) ([]entity.UIElement, error)
 	GetPageContext(ctx context.Context) (*entity.PageContext, error)
 	Screenshot(ctx context.Context) (*entity.Screenshot, error)
+	QueryElements(ctx context.Context, req entity.QueryElementsRequest) (*entity.QueryElementsResult, error)
 
 	CurrentURL() string
 	Close()

@@ -446,6 +446,125 @@ func (b *BrowserAdapter) GetPageContext(ctx context.Context) (*entity.PageContex
 	}, nil
 }
 
+func (b *BrowserAdapter) QueryElements(ctx context.Context, req entity.QueryElementsRequest) (*entity.QueryElementsResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if err := b.checkState(); err != nil {
+		return nil, err
+	}
+
+	if req.Limit <= 0 {
+		req.Limit = 20
+	}
+
+	if req.Limit > 100 {
+		req.Limit = 100
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, b.timeout)
+	defer cancel()
+
+	jsCode := `(selector, limit, extractConfig) => {
+		const elements = Array.from(document.querySelectorAll(selector)).slice(0, limit);
+
+		return elements.map((element, index) => {
+			const data = {};
+
+			for (const [subSelector, extractType] of Object.entries(extractConfig)) {
+				try {
+					if (subSelector === '_self') {
+						if (extractType === 'text') {
+							data[subSelector] = element.innerText?.trim() || '';
+						} else if (extractType === 'html') {
+							data[subSelector] = element.innerHTML || '';
+						} else if (extractType.startsWith('attr:')) {
+							const attrName = extractType.substring(5);
+							data[subSelector] = element.getAttribute(attrName) || '';
+						}
+					} else {
+						const subElement = element.querySelector(subSelector);
+						if (subElement) {
+							if (extractType === 'text') {
+								data[subSelector] = subElement.innerText?.trim() || '';
+							} else if (extractType === 'html') {
+								data[subSelector] = subElement.innerHTML || '';
+							} else if (extractType.startsWith('attr:')) {
+								const attrName = extractType.substring(5);
+								data[subSelector] = subElement.getAttribute(attrName) || '';
+							}
+						} else {
+							data[subSelector] = '';
+						}
+					}
+				} catch (e) {
+					data[subSelector] = '';
+				}
+			}
+
+			let elementSelector = selector + ':nth-of-type(' + (index + 1) + ')';
+			if (element.id) {
+				elementSelector = '#' + element.id;
+			} else if (element.className) {
+				const classes = element.className.split(' ').filter(c => c).join('.');
+				if (classes) {
+					elementSelector = element.tagName.toLowerCase() + '.' + classes;
+				}
+			}
+
+			return {
+				index: index,
+				selector: elementSelector,
+				data: data
+			};
+		});
+	}`
+
+	result, err := b.page.Context(timeoutCtx).Eval(jsCode, req.Selector, req.Limit, req.Extract)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query elements: %w", err)
+	}
+
+	var rawResults []map[string]interface{}
+	if err := result.Value.Unmarshal(&rawResults); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal query results: %w", err)
+	}
+
+	elements := make([]entity.ElementData, 0, len(rawResults))
+	for _, raw := range rawResults {
+		index := 0
+		if idx, ok := raw["index"].(float64); ok {
+			index = int(idx)
+		}
+
+		selector := ""
+		if sel, ok := raw["selector"].(string); ok {
+			selector = sel
+		}
+
+		data := make(map[string]string)
+		if dataMap, ok := raw["data"].(map[string]interface{}); ok {
+			for k, v := range dataMap {
+				if strVal, ok := v.(string); ok {
+					data[k] = strVal
+				}
+			}
+		}
+
+		elements = append(elements, entity.ElementData{
+			Index:    index,
+			Selector: selector,
+			Data:     data,
+		})
+	}
+
+	return &entity.QueryElementsResult{
+		Elements: elements,
+		Count:    len(elements),
+	}, nil
+}
+
 func (b *BrowserAdapter) Screenshot(ctx context.Context) (*entity.Screenshot, error) {
 	if ctx == nil {
 		ctx = context.Background()
