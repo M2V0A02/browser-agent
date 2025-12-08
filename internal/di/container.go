@@ -26,10 +26,12 @@ type Container struct {
 }
 
 type Config struct {
-	OpenRouterAPIKey string
-	OpenRouterModel  string
-	BrowserHeadless  bool
-	SystemPrompt     string
+	OpenRouterAPIKey   string
+	OpenRouterModel    string
+	BrowserHeadless    bool
+	SystemPrompt       string
+	ThinkingMode       bool
+	ThinkingBudget     int
 }
 
 func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
@@ -48,6 +50,10 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 
 	llmCfg := openrouter.DefaultConfig(cfg.OpenRouterAPIKey, cfg.OpenRouterModel)
 	llmCfg.Logger = log
+	llmCfg.ThinkingMode = cfg.ThinkingMode
+	if cfg.ThinkingBudget > 0 {
+		llmCfg.ThinkingBudget = cfg.ThinkingBudget
+	}
 	llm := openrouter.NewOpenRouterAdapter(llmCfg)
 
 	userInteraction := userinteraction.NewConsoleUserInteraction()

@@ -18,23 +18,29 @@ import (
 var _ output.LLMPort = (*OpenRouterAdapter)(nil)
 
 type OpenRouterAdapter struct {
-	client *openai.Client
-	model  string
-	logger output.LoggerPort
+	client        *openai.Client
+	model         string
+	logger        output.LoggerPort
+	thinkingMode  bool
+	thinkingBudget int
 }
 
 type Config struct {
-	APIKey  string
-	Model   string
-	BaseURL string
-	Logger  output.LoggerPort
+	APIKey         string
+	Model          string
+	BaseURL        string
+	Logger         output.LoggerPort
+	ThinkingMode   bool
+	ThinkingBudget int
 }
 
 func DefaultConfig(apiKey, model string) Config {
 	return Config{
-		APIKey:  apiKey,
-		Model:   model,
-		BaseURL: "https://openrouter.ai/api/v1",
+		APIKey:         apiKey,
+		Model:          model,
+		BaseURL:        "https://openrouter.ai/api/v1",
+		ThinkingMode:   true,
+		ThinkingBudget: 10000,
 	}
 }
 
@@ -111,9 +117,11 @@ func NewOpenRouterAdapter(cfg Config) *OpenRouterAdapter {
 	}
 
 	return &OpenRouterAdapter{
-		client: openai.NewClientWithConfig(config),
-		model:  cfg.Model,
-		logger: cfg.Logger,
+		client:         openai.NewClientWithConfig(config),
+		model:          cfg.Model,
+		logger:         cfg.Logger,
+		thinkingMode:   cfg.ThinkingMode,
+		thinkingBudget: cfg.ThinkingBudget,
 	}
 }
 
@@ -126,16 +134,24 @@ func (a *OpenRouterAdapter) Chat(ctx context.Context, req output.ChatRequest) (*
 			"model", a.model,
 			"messagesCount", len(messages),
 			"toolsCount", len(tools),
-			"temperature", req.Temperature)
+			"temperature", req.Temperature,
+			"thinkingMode", a.thinkingMode,
+			"thinkingBudget", a.thinkingBudget)
 	}
 
-	resp, err := a.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+	chatReq := openai.ChatCompletionRequest{
 		Model:       a.model,
 		Messages:    messages,
 		Tools:       tools,
 		ToolChoice:  "auto",
 		Temperature: req.Temperature,
-	})
+	}
+
+	if a.thinkingMode && a.thinkingBudget > 0 {
+		chatReq.MaxCompletionTokens = a.thinkingBudget
+	}
+
+	resp, err := a.client.CreateChatCompletion(ctx, chatReq)
 	if err != nil {
 		if a.logger != nil {
 			a.logger.Error("Chat completion failed", "error", err)
