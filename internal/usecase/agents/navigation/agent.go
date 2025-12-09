@@ -6,10 +6,12 @@ import (
 
 	"browser-agent/internal/application/port/output"
 	"browser-agent/internal/domain/entity"
+	"browser-agent/internal/usecase/evaluator"
 )
 
 const (
 	maxIterations     = 5
+	maxRetries        = 2
 	maxObservationLen = 20000
 )
 
@@ -20,6 +22,7 @@ type Agent struct {
 	tools        output.ToolRegistry
 	logger       output.LoggerPort
 	systemPrompt string
+	evaluator    *evaluator.Evaluator
 }
 
 func New(
@@ -33,6 +36,7 @@ func New(
 		tools:        tools,
 		logger:       logger,
 		systemPrompt: systemPrompt,
+		evaluator:    evaluator.New(llm, logger),
 	}
 }
 
@@ -45,12 +49,68 @@ func (a *Agent) GetSubAgentType() entity.SubAgentType {
 }
 
 func (a *Agent) GetDescription() string {
-	return "Navigate to URLs, explore pages, scroll through content, and find elements. Use this when you need to open a website, move to a different page, or locate specific sections."
+	return "Navigate to URLs, explore pages, scroll, and locate elements. Use ONLY for opening websites and moving between pages. Does NOT fill forms or extract data."
 }
 
 func (a *Agent) Execute(ctx context.Context, task string) (string, error) {
 	a.logger.Info("Navigation agent executing", "task", task)
 
+	var lastResult string
+	originalTask := task
+
+	for retry := 0; retry <= maxRetries; retry++ {
+		if retry > 0 {
+			a.logger.Info("Retrying navigation with feedback", "retry", retry)
+		}
+
+		result, err := a.executeWithIterations(ctx, task)
+		if err != nil {
+			return "", err
+		}
+
+		lastResult = result
+
+		eval, err := a.evaluator.Evaluate(ctx, entity.EvaluationCriteria{
+			TaskDescription: originalTask,
+			ActualResult:    result,
+			AgentType:       entity.AgentTypeNavigation,
+		})
+		if err != nil {
+			a.logger.Warn("Evaluation failed, returning result anyway", "error", err)
+			return result, nil
+		}
+
+		if eval.Success {
+			a.logger.Info("Navigation successful",
+				"confidence", eval.Confidence,
+				"retry_number", retry,
+			)
+			return result, nil
+		}
+
+		if !eval.ShouldRetry || retry == maxRetries {
+			a.logger.Warn("Navigation suboptimal but not retrying",
+				"confidence", eval.Confidence,
+				"issues", eval.Issues,
+			)
+			return result, nil
+		}
+
+		a.logger.Info("Navigation needs improvement, retrying",
+			"confidence", eval.Confidence,
+			"issues", eval.Issues,
+		)
+
+		task = fmt.Sprintf("%s\n\nPREVIOUS ATTEMPT FEEDBACK:\n%s\n\nIssues to fix:\n", originalTask, eval.Feedback)
+		for i, issue := range eval.Issues {
+			task += fmt.Sprintf("%d. %s\n", i+1, issue)
+		}
+	}
+
+	return lastResult, nil
+}
+
+func (a *Agent) executeWithIterations(ctx context.Context, task string) (string, error) {
 	messages := []entity.Message{
 		{Role: entity.RoleSystem, Content: a.systemPrompt},
 		{Role: entity.RoleUser, Content: task},

@@ -6,10 +6,12 @@ import (
 
 	"browser-agent/internal/application/port/output"
 	"browser-agent/internal/domain/entity"
+	"browser-agent/internal/usecase/evaluator"
 )
 
 const (
 	maxIterations     = 5
+	maxRetries        = 2
 	maxObservationLen = 20000
 )
 
@@ -20,6 +22,7 @@ type Agent struct {
 	tools        output.ToolRegistry
 	logger       output.LoggerPort
 	systemPrompt string
+	evaluator    *evaluator.Evaluator
 }
 
 func New(
@@ -33,6 +36,7 @@ func New(
 		tools:        tools,
 		logger:       logger,
 		systemPrompt: systemPrompt,
+		evaluator:    evaluator.New(llm, logger),
 	}
 }
 
@@ -45,12 +49,68 @@ func (a *Agent) GetSubAgentType() entity.SubAgentType {
 }
 
 func (a *Agent) GetDescription() string {
-	return "Extract structured data from web pages using CSS selectors. Use this when you need to get lists, tables, product info, emails, or any repeated elements from the current page."
+	return "Extract and read structured data from pages (lists, tables, text). Use ONLY for reading information from current page. Does NOT modify page or navigate."
 }
 
 func (a *Agent) Execute(ctx context.Context, task string) (string, error) {
 	a.logger.Info("Extraction agent executing", "task", task)
 
+	var lastResult string
+	originalTask := task
+
+	for retry := 0; retry <= maxRetries; retry++ {
+		if retry > 0 {
+			a.logger.Info("Retrying extraction with feedback", "retry", retry)
+		}
+
+		result, err := a.executeWithIterations(ctx, task)
+		if err != nil {
+			return "", err
+		}
+
+		lastResult = result
+
+		eval, err := a.evaluator.Evaluate(ctx, entity.EvaluationCriteria{
+			TaskDescription: originalTask,
+			ActualResult:    result,
+			AgentType:       entity.AgentTypeExtraction,
+		})
+		if err != nil {
+			a.logger.Warn("Evaluation failed, returning result anyway", "error", err)
+			return result, nil
+		}
+
+		if eval.Success {
+			a.logger.Info("Extraction successful",
+				"confidence", eval.Confidence,
+				"retry_number", retry,
+			)
+			return result, nil
+		}
+
+		if !eval.ShouldRetry || retry == maxRetries {
+			a.logger.Warn("Extraction suboptimal but not retrying",
+				"confidence", eval.Confidence,
+				"issues", eval.Issues,
+			)
+			return result, nil
+		}
+
+		a.logger.Info("Extraction needs improvement, retrying",
+			"confidence", eval.Confidence,
+			"issues", eval.Issues,
+		)
+
+		task = fmt.Sprintf("%s\n\nPREVIOUS ATTEMPT FEEDBACK:\n%s\n\nIssues to fix:\n", originalTask, eval.Feedback)
+		for i, issue := range eval.Issues {
+			task += fmt.Sprintf("%d. %s\n", i+1, issue)
+		}
+	}
+
+	return lastResult, nil
+}
+
+func (a *Agent) executeWithIterations(ctx context.Context, task string) (string, error) {
 	messages := []entity.Message{
 		{Role: entity.RoleSystem, Content: a.systemPrompt},
 		{Role: entity.RoleUser, Content: task},

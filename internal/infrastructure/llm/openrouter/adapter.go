@@ -71,35 +71,19 @@ func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 
 	resp, err := t.base.RoundTrip(req)
 
-	if resp != nil && resp.Body != nil {
-		resp.Body = &reasoningFixerReader{
-			reader: resp.Body,
-			logger: t.logger,
+	if resp != nil && resp.Body != nil && t.logger != nil {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if err == nil {
+			fixed := strings.ReplaceAll(string(bodyBytes), `"reasoning":`, `"reasoning_content":`)
+			resp.Body = io.NopCloser(strings.NewReader(fixed))
+		} else {
+			resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		}
 	}
 
 	return resp, err
-}
-
-type reasoningFixerReader struct {
-	reader io.ReadCloser
-	buffer bytes.Buffer
-	logger output.LoggerPort
-}
-
-func (r *reasoningFixerReader) Read(p []byte) (int, error) {
-	n, err := r.reader.Read(p)
-	if n > 0 {
-		chunk := string(p[:n])
-		fixed := strings.ReplaceAll(chunk, `"reasoning":`, `"reasoning_content":`)
-		copy(p, fixed)
-		return len(fixed), err
-	}
-	return n, err
-}
-
-func (r *reasoningFixerReader) Close() error {
-	return r.reader.Close()
 }
 
 func NewOpenRouterAdapter(cfg Config) *OpenRouterAdapter {

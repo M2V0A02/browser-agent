@@ -73,7 +73,7 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 	registerUserInteractionTools(orchestratorTools, userInteraction, log)
 	registerRunAgentTool(orchestratorTools, simpleAgents, log)
 
-	orchestratorUC := orchestrator.New(llm, orchestratorTools, log, prompts.OrchestratorPrompt)
+	orchestratorUC := orchestrator.New(llm, orchestratorTools, simpleAgents, log, prompts.OrchestratorPrompt)
 
 	return &Container{
 		Browser:         browser,

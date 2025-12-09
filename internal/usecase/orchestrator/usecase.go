@@ -7,6 +7,7 @@ import (
 	"browser-agent/internal/application/port/input"
 	"browser-agent/internal/application/port/output"
 	"browser-agent/internal/domain/entity"
+	"browser-agent/internal/infrastructure/prompts"
 )
 
 const (
@@ -17,31 +18,39 @@ const (
 var _ input.TaskExecutor = (*UseCase)(nil)
 
 type UseCase struct {
-	llm          output.LLMPort
-	agentTools   output.ToolRegistry
-	logger       output.LoggerPort
-	systemPrompt string
+	llm                  output.LLMPort
+	agentTools           output.ToolRegistry
+	agentRegistry        output.SimpleAgentRegistry
+	logger               output.LoggerPort
+	systemPromptTemplate string
 }
 
 func New(
 	llm output.LLMPort,
 	agentTools output.ToolRegistry,
+	agentRegistry output.SimpleAgentRegistry,
 	logger output.LoggerPort,
-	systemPrompt string,
+	systemPromptTemplate string,
 ) *UseCase {
 	return &UseCase{
-		llm:          llm,
-		agentTools:   agentTools,
-		logger:       logger,
-		systemPrompt: systemPrompt,
+		llm:                  llm,
+		agentTools:           agentTools,
+		agentRegistry:        agentRegistry,
+		logger:               logger,
+		systemPromptTemplate: systemPromptTemplate,
 	}
 }
 
 func (uc *UseCase) Execute(ctx context.Context, task string) (*input.ExecuteResult, error) {
 	uc.logger.Info("Orchestrator executing task", "task", task)
 
+	systemPrompt, err := prompts.GenerateOrchestratorPrompt(uc.systemPromptTemplate, uc.agentRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate system prompt: %w", err)
+	}
+
 	messages := []entity.Message{
-		{Role: entity.RoleSystem, Content: uc.systemPrompt},
+		{Role: entity.RoleSystem, Content: systemPrompt},
 		{Role: entity.RoleUser, Content: task},
 	}
 
