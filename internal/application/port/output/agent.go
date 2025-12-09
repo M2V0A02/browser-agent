@@ -9,7 +9,7 @@ import (
 
 type SimpleAgent interface {
 	GetType() entity.AgentType
-	GetName() entity.ToolName
+	GetSubAgentType() entity.SubAgentType
 	GetDescription() string
 	Execute(ctx context.Context, task string) (string, error)
 }
@@ -22,6 +22,6 @@ type AgentRegistry interface {
 
 type SimpleAgentRegistry interface {
 	Register(agent SimpleAgent)
-	Get(agentType entity.AgentType) (SimpleAgent, bool)
+	GetBySubType(subType entity.SubAgentType) (SimpleAgent, bool)
 	List() []SimpleAgent
 }

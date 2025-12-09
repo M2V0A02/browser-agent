@@ -13,7 +13,6 @@ import (
 	"browser-agent/internal/infrastructure/logger"
 	"browser-agent/internal/infrastructure/prompts"
 	"browser-agent/internal/infrastructure/userinteraction"
-	"browser-agent/internal/usecase/agents/analysis"
 	"browser-agent/internal/usecase/agents/extraction"
 	"browser-agent/internal/usecase/agents/form"
 	"browser-agent/internal/usecase/agents/navigation"
@@ -31,12 +30,12 @@ type Container struct {
 }
 
 type Config struct {
-	OpenRouterAPIKey   string
-	OpenRouterModel    string
-	BrowserHeadless    bool
-	SystemPrompt       string
-	ThinkingMode       bool
-	ThinkingBudget     int
+	OpenRouterAPIKey string
+	OpenRouterModel  string
+	BrowserHeadless  bool
+	SystemPrompt     string
+	ThinkingMode     bool
+	ThinkingBudget   int
 }
 
 func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
@@ -70,10 +69,9 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 	simpleAgents := service.NewSimpleAgentRegistry()
 	registerSimpleAgents(simpleAgents, llm, tools, log)
 
-	agentTools := service.NewToolRegistry()
-	registerAgentTools(agentTools, simpleAgents, log)
+	registerRunAgentTool(tools, simpleAgents, log)
 
-	orchestratorUC := orchestrator.New(llm, agentTools, log, prompts.OrchestratorPrompt)
+	orchestratorUC := orchestrator.New(llm, tools, log, prompts.OrchestratorPrompt)
 
 	return &Container{
 		Browser:         browser,
@@ -116,11 +114,8 @@ func registerSimpleAgents(registry *service.SimpleAgentRegistryImpl, llm output.
 	registry.Register(navigation.New(llm, tools, log, prompts.NavigationPrompt))
 	registry.Register(extraction.New(llm, tools, log, prompts.ExtractionPrompt))
 	registry.Register(form.New(llm, tools, log, prompts.FormPrompt))
-	registry.Register(analysis.New(llm, tools, log, prompts.AnalysisPrompt))
 }
 
-func registerAgentTools(registry *service.ToolRegistryImpl, agents output.SimpleAgentRegistry, log output.LoggerPort) {
-	for _, agent := range agents.List() {
-		registry.Register(tool.NewAgentTool(agent, log))
-	}
+func registerRunAgentTool(registry *service.ToolRegistryImpl, agents output.SimpleAgentRegistry, log output.LoggerPort) {
+	registry.Register(tool.NewRunAgentTool(agents, log))
 }

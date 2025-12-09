@@ -40,8 +40,8 @@ func (a *Agent) GetType() entity.AgentType {
 	return entity.AgentTypeNavigation
 }
 
-func (a *Agent) GetName() entity.ToolName {
-	return entity.ToolAgentNavigate
+func (a *Agent) GetSubAgentType() entity.SubAgentType {
+	return entity.SubAgentNavigation
 }
 
 func (a *Agent) GetDescription() string {

@@ -79,21 +79,21 @@ func (r *AgentRegistryImpl) List() []entity.AgentType {
 var _ output.SimpleAgentRegistry = (*SimpleAgentRegistryImpl)(nil)
 
 type SimpleAgentRegistryImpl struct {
-	agents map[entity.AgentType]output.SimpleAgent
+	agents map[entity.SubAgentType]output.SimpleAgent
 }
 
 func NewSimpleAgentRegistry() *SimpleAgentRegistryImpl {
 	return &SimpleAgentRegistryImpl{
-		agents: make(map[entity.AgentType]output.SimpleAgent),
+		agents: make(map[entity.SubAgentType]output.SimpleAgent),
 	}
 }
 
 func (r *SimpleAgentRegistryImpl) Register(agent output.SimpleAgent) {
-	r.agents[agent.GetType()] = agent
+	r.agents[agent.GetSubAgentType()] = agent
 }
 
-func (r *SimpleAgentRegistryImpl) Get(agentType entity.AgentType) (output.SimpleAgent, bool) {
-	agent, ok := r.agents[agentType]
+func (r *SimpleAgentRegistryImpl) GetBySubType(subType entity.SubAgentType) (output.SimpleAgent, bool) {
+	agent, ok := r.agents[subType]
 	return agent, ok
 }
 

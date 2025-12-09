@@ -18,10 +18,10 @@ import (
 var _ output.LLMPort = (*OpenRouterAdapter)(nil)
 
 type OpenRouterAdapter struct {
-	client        *openai.Client
-	model         string
-	logger        output.LoggerPort
-	thinkingMode  bool
+	client         *openai.Client
+	model          string
+	logger         output.LoggerPort
+	thinkingMode   bool
 	thinkingBudget int
 }
 

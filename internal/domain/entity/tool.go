@@ -13,15 +13,25 @@ const (
 	ToolBrowserQueryElements ToolName = "browser_query_elements"
 	ToolBrowserSearch       ToolName = "browser_search"
 
-	ToolAgentNavigate ToolName = "agent_navigate"
-	ToolAgentExtract  ToolName = "agent_extract"
-	ToolAgentForm     ToolName = "agent_form"
-	ToolAgentAnalyze  ToolName = "agent_analyze"
+	ToolRunAgent ToolName = "run_agent"
 
 	ToolUserAskQuestion   ToolName = "user_ask_question"
 	ToolUserWaitAction    ToolName = "user_wait_action"
 )
 
 func (t ToolName) String() string {
+	return string(t)
+}
+
+type SubAgentType string
+
+const (
+	SubAgentNavigation SubAgentType = "navigation"
+	SubAgentExtraction SubAgentType = "extraction"
+	SubAgentForm       SubAgentType = "form"
+	SubAgentAnalysis   SubAgentType = "analysis"
+)
+
+func (t SubAgentType) String() string {
 	return string(t)
 }
