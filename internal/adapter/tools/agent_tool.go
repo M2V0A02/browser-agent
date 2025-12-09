@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"browser-agent/internal/application/port/output"
+	"browser-agent/internal/domain/entity"
 )
 
 var _ output.ToolPort = (*AgentTool)(nil)
@@ -21,7 +22,7 @@ func NewAgentTool(agent output.SimpleAgent, logger output.LoggerPort) *AgentTool
 	}
 }
 
-func (t *AgentTool) Name() string {
+func (t *AgentTool) Name() entity.ToolName {
 	return t.agent.GetName()
 }
 

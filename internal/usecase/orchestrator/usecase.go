@@ -85,7 +85,7 @@ func (uc *UseCase) Execute(ctx context.Context, task string) (*input.ExecuteResu
 }
 
 func (uc *UseCase) executeTool(ctx context.Context, tc entity.ToolCall) string {
-	tool, ok := uc.agentTools.Get(tc.Name)
+	tool, ok := uc.agentTools.Get(entity.ToolName(tc.Name))
 	if !ok {
 		uc.logger.Warn("Unknown agent tool called", "name", tc.Name)
 		return fmt.Sprintf("Error: unknown agent tool '%s'", tc.Name)

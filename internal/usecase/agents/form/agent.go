@@ -40,8 +40,8 @@ func (a *Agent) GetType() entity.AgentType {
 	return entity.AgentTypeForm
 }
 
-func (a *Agent) GetName() string {
-	return "form_agent"
+func (a *Agent) GetName() entity.ToolName {
+	return entity.ToolAgentForm
 }
 
 func (a *Agent) GetDescription() string {
@@ -92,7 +92,7 @@ func (a *Agent) Execute(ctx context.Context, task string) (string, error) {
 }
 
 func (a *Agent) executeTool(ctx context.Context, tc entity.ToolCall) string {
-	tool, ok := a.tools.Get(tc.Name)
+	tool, ok := a.tools.Get(entity.ToolName(tc.Name))
 	if !ok {
 		a.logger.Warn("Unknown tool called", "name", tc.Name)
 		return fmt.Sprintf("Error: unknown tool '%s'", tc.Name)
@@ -115,7 +115,15 @@ func (a *Agent) executeTool(ctx context.Context, tc entity.ToolCall) string {
 }
 
 func (a *Agent) filterTools() []entity.ToolDefinition {
-	allowedTools := []string{"fill", "click", "press_enter", "observe", "search", "wait_user_action", "ask_question"}
+	allowedTools := []entity.ToolName{
+		entity.ToolBrowserFill,
+		entity.ToolBrowserClick,
+		entity.ToolBrowserPressEnter,
+		entity.ToolBrowserObserve,
+		entity.ToolBrowserSearch,
+		entity.ToolUserWaitAction,
+		entity.ToolUserAskQuestion,
+	}
 
 	allTools := a.tools.Definitions()
 	filtered := make([]entity.ToolDefinition, 0)

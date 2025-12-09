@@ -19,7 +19,7 @@ func NewNavigateTool(browser output.BrowserPort, logger output.LoggerPort) *Navi
 	return &NavigateTool{browser: browser, logger: logger}
 }
 
-func (t *NavigateTool) Name() string { return "navigate" }
+func (t *NavigateTool) Name() entity.ToolName { return entity.ToolBrowserNavigate }
 func (t *NavigateTool) Description() string {
 	return "Navigate browser to a URL. Use this to open web pages or follow links. Accepts full URLs (https://example.com) or partial URLs. Returns the final URL after navigation (may differ due to redirects). Use this as the first step when starting a new task or when you need to go to a different website."
 }
@@ -58,7 +58,7 @@ func NewClickTool(browser output.BrowserPort, logger output.LoggerPort) *ClickTo
 	return &ClickTool{browser: browser, logger: logger}
 }
 
-func (t *ClickTool) Name() string { return "click" }
+func (t *ClickTool) Name() entity.ToolName { return entity.ToolBrowserClick }
 func (t *ClickTool) Description() string {
 	return "Click on page elements. Supports single click, batch clicking multiple elements, and observing changes after click. Use 'selector' for single click, 'selectors' array for batch operations (up to 50 elements). Set 'observe' to true to see what changed after clicking (new modals, buttons, URL changes). Batch clicks are executed sequentially without returning to LLM between clicks."
 }
@@ -176,7 +176,7 @@ func NewFillTool(browser output.BrowserPort, logger output.LoggerPort) *FillTool
 	return &FillTool{browser: browser, logger: logger}
 }
 
-func (t *FillTool) Name() string { return "fill" }
+func (t *FillTool) Name() entity.ToolName { return entity.ToolBrowserFill }
 func (t *FillTool) Description() string {
 	return "Fill text into form fields. Supports single field or batch filling multiple fields. Use 'selector' and 'text' for single field, or 'fields' object for batch operations (up to 20 fields). Clears existing content before filling. All batch fills are executed without returning to LLM between fields. For submitting forms, use press_enter after filling or click on submit button."
 }
@@ -244,7 +244,7 @@ func NewScrollTool(browser output.BrowserPort, logger output.LoggerPort) *Scroll
 	return &ScrollTool{browser: browser, logger: logger}
 }
 
-func (t *ScrollTool) Name() string { return "scroll" }
+func (t *ScrollTool) Name() entity.ToolName { return entity.ToolBrowserScroll }
 func (t *ScrollTool) Description() string {
 	return "Scroll the page in specified direction. Directions: 'up' (scroll up one viewport), 'down' (scroll down one viewport), 'top' (scroll to page top), 'bottom' (scroll to page bottom). Use this to reveal content below the fold, navigate long pages, or before taking screenshots of different page sections. After scrolling, use ui_summary to see newly visible elements."
 }
@@ -284,7 +284,7 @@ func NewScreenshotTool(browser output.BrowserPort, logger output.LoggerPort) *Sc
 	return &ScreenshotTool{browser: browser, logger: logger}
 }
 
-func (t *ScreenshotTool) Name() string { return "screenshot" }
+func (t *ScreenshotTool) Name() entity.ToolName { return entity.ToolBrowserScreenshot }
 func (t *ScreenshotTool) Description() string {
 	return "Capture a screenshot of the current visible viewport. Returns base64-encoded image data URL. Use this when you need visual confirmation of page state, to verify UI appearance, or to show results to user. The screenshot only captures the visible portion - use scroll to capture different sections. Useful after navigation or interactions to confirm success."
 }
@@ -314,7 +314,7 @@ func NewPressEnterTool(browser output.BrowserPort, logger output.LoggerPort) *Pr
 	return &PressEnterTool{browser: browser, logger: logger}
 }
 
-func (t *PressEnterTool) Name() string { return "press_enter" }
+func (t *PressEnterTool) Name() entity.ToolName { return entity.ToolBrowserPressEnter }
 func (t *PressEnterTool) Description() string {
 	return "Press the Enter key on the keyboard. Use this to submit forms after filling input fields, trigger search actions, or confirm inputs. Common workflow: fill input field with search query, then press_enter to submit. Alternative to clicking submit buttons when Enter key submission is supported."
 }
@@ -342,7 +342,7 @@ func NewAskQuestionTool(userInteraction output.UserInteractionPort, logger outpu
 	return &AskQuestionTool{userInteraction: userInteraction, logger: logger}
 }
 
-func (t *AskQuestionTool) Name() string { return "ask_question" }
+func (t *AskQuestionTool) Name() entity.ToolName { return entity.ToolUserAskQuestion }
 func (t *AskQuestionTool) Description() string {
 	return "Ask the user a question and wait for their response. Use this for gathering preferences, clarifications, or non-sensitive information. Authentication and credentials are handled automatically by the system - do not request them through this tool. Returns the user's text response."
 }
@@ -382,7 +382,7 @@ func NewWaitUserActionTool(userInteraction output.UserInteractionPort, logger ou
 	return &WaitUserActionTool{userInteraction: userInteraction, logger: logger}
 }
 
-func (t *WaitUserActionTool) Name() string { return "wait_user_action" }
+func (t *WaitUserActionTool) Name() entity.ToolName { return entity.ToolUserWaitAction }
 func (t *WaitUserActionTool) Description() string {
 	return "Pause execution and wait for the user to complete a manual action in the browser. Use this when you need the user to handle tasks that cannot be automated, such as solving CAPTCHA challenges, completing 2FA authentication, manual login steps, or any other human verification. Provide a clear message explaining what action the user needs to perform. The tool will wait until the user presses Enter to confirm completion."
 }
@@ -421,7 +421,7 @@ func NewObserveTool(browser output.BrowserPort, logger output.LoggerPort) *Obser
 	return &ObserveTool{browser: browser, logger: logger}
 }
 
-func (t *ObserveTool) Name() string { return "observe" }
+func (t *ObserveTool) Name() entity.ToolName { return entity.ToolBrowserObserve }
 func (t *ObserveTool) Description() string {
 	return "Observe the current state of the page to understand what you are looking at. Returns comprehensive information: current URL, page title, all visible interactive elements (buttons, links, inputs) with their text and selectors, and a preview of the page's text content. Use this tool when you need to understand the page context, after navigation, after scrolling, or when you're unsure what elements are available. This is your primary tool for situational awareness - it tells you what you can see and interact with on the current page."
 }
@@ -473,7 +473,7 @@ func NewQueryElementsTool(browser output.BrowserPort, logger output.LoggerPort) 
 	return &QueryElementsTool{browser: browser, logger: logger}
 }
 
-func (t *QueryElementsTool) Name() string { return "query_elements" }
+func (t *QueryElementsTool) Name() entity.ToolName { return entity.ToolBrowserQueryElements }
 func (t *QueryElementsTool) Description() string {
 	return "Extract structured data from repeated elements using exact CSS selector. Extracts ALL needed data from multiple elements including nested element selectors for later clicks. Perfect for emails, products, news items when you know the exact selector. Use 'search' tool first if you need to find elements by pattern. Returns compact text format. For multiple selectors, call this tool multiple times in parallel."
 }
@@ -561,7 +561,7 @@ func NewSearchTool(browser output.BrowserPort, logger output.LoggerPort) *Search
 	return &SearchTool{browser: browser, logger: logger}
 }
 
-func (t *SearchTool) Name() string { return "search" }
+func (t *SearchTool) Name() entity.ToolName { return entity.ToolBrowserSearch }
 func (t *SearchTool) Description() string {
 	return "Search for information on the page with minimal output. Three search types: 1) 'text' - finds text content and returns up to 1000 characters with context; 2) 'id' - finds elements by id (or partial id match) and returns their attributes without children; 3) 'attribute' - finds elements by attribute name/value and returns element with selector. Use this for simple searches when you need concise results."
 }

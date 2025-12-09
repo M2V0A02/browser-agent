@@ -9,12 +9,12 @@ import (
 var _ output.ToolRegistry = (*ToolRegistryImpl)(nil)
 
 type ToolRegistryImpl struct {
-	tools map[string]output.ToolPort
+	tools map[entity.ToolName]output.ToolPort
 }
 
 func NewToolRegistry() *ToolRegistryImpl {
 	return &ToolRegistryImpl{
-		tools: make(map[string]output.ToolPort),
+		tools: make(map[entity.ToolName]output.ToolPort),
 	}
 }
 
@@ -22,7 +22,7 @@ func (r *ToolRegistryImpl) Register(tool output.ToolPort) {
 	r.tools[tool.Name()] = tool
 }
 
-func (r *ToolRegistryImpl) Get(name string) (output.ToolPort, bool) {
+func (r *ToolRegistryImpl) Get(name entity.ToolName) (output.ToolPort, bool) {
 	tool, ok := r.tools[name]
 	return tool, ok
 }

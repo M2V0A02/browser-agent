@@ -82,7 +82,7 @@ func (uc *UseCase) Execute(ctx context.Context, task string) (*input.ExecuteResu
 }
 
 func (uc *UseCase) executeTool(ctx context.Context, tc entity.ToolCall) string {
-	tool, ok := uc.tools.Get(tc.Name)
+	tool, ok := uc.tools.Get(entity.ToolName(tc.Name))
 	if !ok {
 		uc.logger.Warn("Unknown tool called", "name", tc.Name)
 		return fmt.Sprintf("Error: unknown tool '%s'", tc.Name)

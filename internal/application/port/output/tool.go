@@ -7,7 +7,7 @@ import (
 )
 
 type ToolPort interface {
-	Name() string
+	Name() entity.ToolName
 	Description() string
 	Parameters() map[string]interface{}
 	Execute(ctx context.Context, arguments string) (string, error)
@@ -15,7 +15,7 @@ type ToolPort interface {
 
 type ToolRegistry interface {
 	Register(tool ToolPort)
-	Get(name string) (ToolPort, bool)
+	Get(name entity.ToolName) (ToolPort, bool)
 	All() []ToolPort
 	Definitions() []entity.ToolDefinition
 }

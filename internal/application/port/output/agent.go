@@ -9,7 +9,7 @@ import (
 
 type SimpleAgent interface {
 	GetType() entity.AgentType
-	GetName() string
+	GetName() entity.ToolName
 	GetDescription() string
 	Execute(ctx context.Context, task string) (string, error)
 }

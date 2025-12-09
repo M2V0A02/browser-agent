@@ -248,7 +248,7 @@ func convertTools(tools []entity.ToolDefinition) []openai.Tool {
 		result = append(result, openai.Tool{
 			Type: openai.ToolTypeFunction,
 			Function: &openai.FunctionDefinition{
-				Name:        t.Name,
+				Name:        t.Name.String(),
 				Description: t.Description,
 				Parameters:  t.Parameters,
 			},

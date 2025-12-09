@@ -40,7 +40,7 @@ type ToolCall struct {
 }
 
 type ToolDefinition struct {
-	Name        string
+	Name        ToolName
 	Description string
 	Parameters  map[string]interface{}
 }
