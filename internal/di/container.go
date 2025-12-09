@@ -13,7 +13,11 @@ import (
 	"browser-agent/internal/infrastructure/logger"
 	"browser-agent/internal/infrastructure/prompts"
 	"browser-agent/internal/infrastructure/userinteraction"
-	"browser-agent/internal/usecase/executor"
+	"browser-agent/internal/usecase/agents/analysis"
+	"browser-agent/internal/usecase/agents/extraction"
+	"browser-agent/internal/usecase/agents/form"
+	"browser-agent/internal/usecase/agents/navigation"
+	"browser-agent/internal/usecase/orchestrator"
 )
 
 type Container struct {
@@ -22,6 +26,7 @@ type Container struct {
 	Logger          output.LoggerPort
 	UserInteraction output.UserInteractionPort
 	Tools           output.ToolRegistry
+	SimpleAgents    output.SimpleAgentRegistry
 	TaskExecutor    input.TaskExecutor
 }
 
@@ -62,12 +67,13 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 	registerBrowserTools(tools, browser, log)
 	registerUserInteractionTools(tools, userInteraction, log)
 
-	systemPrompt := cfg.SystemPrompt
-	if systemPrompt == "" {
-		systemPrompt = prompts.DefaultSystemPrompt
-	}
+	simpleAgents := service.NewSimpleAgentRegistry()
+	registerSimpleAgents(simpleAgents, llm, tools, log)
 
-	uc := executor.New(llm, tools, log, systemPrompt)
+	agentTools := service.NewToolRegistry()
+	registerAgentTools(agentTools, simpleAgents, log)
+
+	orchestratorUC := orchestrator.New(llm, agentTools, log, prompts.OrchestratorPrompt)
 
 	return &Container{
 		Browser:         browser,
@@ -75,7 +81,8 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 		Logger:          log,
 		UserInteraction: userInteraction,
 		Tools:           tools,
-		TaskExecutor:    uc,
+		SimpleAgents:    simpleAgents,
+		TaskExecutor:    orchestratorUC,
 	}, nil
 }
 
@@ -103,4 +110,17 @@ func registerBrowserTools(registry *service.ToolRegistryImpl, browser output.Bro
 func registerUserInteractionTools(registry *service.ToolRegistryImpl, userInteraction output.UserInteractionPort, log output.LoggerPort) {
 	registry.Register(tool.NewAskQuestionTool(userInteraction, log))
 	registry.Register(tool.NewWaitUserActionTool(userInteraction, log))
+}
+
+func registerSimpleAgents(registry *service.SimpleAgentRegistryImpl, llm output.LLMPort, tools output.ToolRegistry, log output.LoggerPort) {
+	registry.Register(navigation.New(llm, tools, log, prompts.NavigationPrompt))
+	registry.Register(extraction.New(llm, tools, log, prompts.ExtractionPrompt))
+	registry.Register(form.New(llm, tools, log, prompts.FormPrompt))
+	registry.Register(analysis.New(llm, tools, log, prompts.AnalysisPrompt))
+}
+
+func registerAgentTools(registry *service.ToolRegistryImpl, agents output.SimpleAgentRegistry, log output.LoggerPort) {
+	for _, agent := range agents.List() {
+		registry.Register(tool.NewAgentTool(agent, log))
+	}
 }
