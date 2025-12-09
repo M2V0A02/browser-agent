@@ -62,23 +62,25 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 
 	userInteraction := userinteraction.NewConsoleUserInteraction()
 
-	tools := service.NewToolRegistry()
-	registerBrowserTools(tools, browser, log)
-	registerUserInteractionTools(tools, userInteraction, log)
+	subAgentTools := service.NewToolRegistry()
+	registerBrowserTools(subAgentTools, browser, log)
+	registerUserInteractionTools(subAgentTools, userInteraction, log)
 
 	simpleAgents := service.NewSimpleAgentRegistry()
-	registerSimpleAgents(simpleAgents, llm, tools, log)
+	registerSimpleAgents(simpleAgents, llm, subAgentTools, log)
 
-	registerRunAgentTool(tools, simpleAgents, log)
+	orchestratorTools := service.NewToolRegistry()
+	registerUserInteractionTools(orchestratorTools, userInteraction, log)
+	registerRunAgentTool(orchestratorTools, simpleAgents, log)
 
-	orchestratorUC := orchestrator.New(llm, tools, log, prompts.OrchestratorPrompt)
+	orchestratorUC := orchestrator.New(llm, orchestratorTools, log, prompts.OrchestratorPrompt)
 
 	return &Container{
 		Browser:         browser,
 		LLM:             llm,
 		Logger:          log,
 		UserInteraction: userInteraction,
-		Tools:           tools,
+		Tools:           subAgentTools,
 		SimpleAgents:    simpleAgents,
 		TaskExecutor:    orchestratorUC,
 	}, nil

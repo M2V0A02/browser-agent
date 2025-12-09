@@ -16,14 +16,6 @@ import (
 func main() {
 	envService := env.NewEnvService()
 
-	fmt.Println("\nВведите задачу для агента:")
-	reader := bufio.NewReader(os.Stdin)
-	task, err := reader.ReadString('\n')
-	if err != nil {
-		log.Fatal("Ошибка чтения ввода: ", err)
-	}
-	task = strings.TrimSpace(task)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
@@ -41,6 +33,14 @@ func main() {
 		log.Fatalf("Ошибка инициализации: %v", err)
 	}
 	defer container.Close()
+
+	fmt.Println("\nВведите задачу для агента:")
+	reader := bufio.NewReader(os.Stdin)
+	task, err := reader.ReadString('\n')
+	if err != nil {
+		log.Fatal("Ошибка чтения ввода: ", err)
+	}
+	task = strings.TrimSpace(task)
 
 	container.Logger.Info("Task started", "task", task)
 	fmt.Println("\nАгент начал работу...")
