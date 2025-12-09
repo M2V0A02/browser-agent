@@ -563,7 +563,7 @@ func NewSearchTool(browser output.BrowserPort, logger output.LoggerPort) *Search
 
 func (t *SearchTool) Name() entity.ToolName { return entity.ToolBrowserSearch }
 func (t *SearchTool) Description() string {
-	return "Search for information on the page with minimal output. Three search types: 1) 'text' - finds text content and returns up to 1000 characters with context; 2) 'id' - finds elements by id (or partial id match) and returns their attributes without children; 3) 'attribute' - finds elements by attribute name/value and returns element with selector. Use this for simple searches when you need concise results."
+	return "Search for information on the page. Three search types: 1) 'text' - finds text content and returns up to 1000 characters with context; 2) 'id' - finds elements by id (or partial id match) and returns element type, text content, selector, and key attributes; 3) 'attribute' - finds elements by attribute name/value and returns same detailed info. Returns rich context including element type, visible text, and important attributes to help you understand what each element is and how to interact with it."
 }
 func (t *SearchTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
@@ -621,18 +621,23 @@ func formatSearchResult(result *entity.SearchResult) string {
 
 		output := fmt.Sprintf("Found %d element(s):\n\n", len(result.Elements))
 		for i, elem := range result.Elements {
-			output += fmt.Sprintf("#%d [%s]\n", i+1, elem.Selector)
-			if elem.ID != "" {
-				output += fmt.Sprintf("  id: %q\n", elem.ID)
+			output += fmt.Sprintf("#%d <%s> [%s]\n", i+1, elem.TagName, elem.Selector)
+
+			if elem.Text != "" {
+				output += fmt.Sprintf("  Text: %q\n", elem.Text)
 			}
-			if len(elem.Attributes) > 0 {
-				output += "  attributes:\n"
-				for k, v := range elem.Attributes {
-					if v != "" {
-						output += fmt.Sprintf("    %s: %q\n", k, v)
-					}
+
+			if elem.ID != "" {
+				output += fmt.Sprintf("  ID: %q\n", elem.ID)
+			}
+
+			importantAttrs := []string{"type", "name", "value", "placeholder", "href", "aria-label", "title", "role"}
+			for _, attr := range importantAttrs {
+				if v, ok := elem.Attributes[attr]; ok && v != "" {
+					output += fmt.Sprintf("  %s: %q\n", attr, v)
 				}
 			}
+
 			output += "\n"
 		}
 		return output

@@ -840,9 +840,14 @@ func (b *BrowserAdapter) searchByID(ctx context.Context, id string) (*entity.Sea
 				selector = el.tagName.toLowerCase();
 			}
 
+			let text = el.innerText || el.textContent || '';
+			text = text.trim().substring(0, 200);
+
 			return {
 				id: el.id,
 				selector: selector,
+				tagName: el.tagName.toLowerCase(),
+				text: text,
 				attributes: attrs
 			};
 		});
@@ -878,6 +883,14 @@ func (b *BrowserAdapter) searchByID(ctx context.Context, id string) (*entity.Sea
 
 		if selector, ok := raw["selector"].(string); ok {
 			elem.Selector = selector
+		}
+
+		if tagName, ok := raw["tagName"].(string); ok {
+			elem.TagName = tagName
+		}
+
+		if text, ok := raw["text"].(string); ok {
+			elem.Text = text
 		}
 
 		if attrs, ok := raw["attributes"].(map[string]interface{}); ok {
@@ -931,9 +944,14 @@ func (b *BrowserAdapter) searchByAttribute(ctx context.Context, query string) (*
 				selector = el.tagName.toLowerCase();
 			}
 
+			let text = el.innerText || el.textContent || '';
+			text = text.trim().substring(0, 200);
+
 			return {
 				id: el.id,
 				selector: selector,
+				tagName: el.tagName.toLowerCase(),
+				text: text,
 				attributes: attrs
 			};
 		});
@@ -969,6 +987,14 @@ func (b *BrowserAdapter) searchByAttribute(ctx context.Context, query string) (*
 
 		if selector, ok := raw["selector"].(string); ok {
 			elem.Selector = selector
+		}
+
+		if tagName, ok := raw["tagName"].(string); ok {
+			elem.TagName = tagName
+		}
+
+		if text, ok := raw["text"].(string); ok {
+			elem.Text = text
 		}
 
 		if attrs, ok := raw["attributes"].(map[string]interface{}); ok {

@@ -63,6 +63,8 @@ type SearchResult struct {
 type SearchElement struct {
 	ID         string
 	Selector   string
+	TagName    string
+	Text       string
 	Attributes map[string]string
 }
 
