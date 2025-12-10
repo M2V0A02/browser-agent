@@ -23,9 +23,9 @@ func TestRealOrchestratorPromptGeneration(t *testing.T) {
 	registry := service.NewSimpleAgentRegistry()
 	tools := service.NewToolRegistry()
 
-	registry.Register(navigation.New(nil, tools, log, ""))
-	registry.Register(extraction.New(nil, tools, log, ""))
-	registry.Register(form.New(nil, tools, log, ""))
+	registry.Register(navigation.New(nil, tools, log, nil, ""))
+	registry.Register(extraction.New(nil, tools, log, nil, ""))
+	registry.Register(form.New(nil, tools, log, nil, ""))
 
 	prompt, err := prompts.GenerateOrchestratorPrompt(prompts.OrchestratorPrompt, registry)
 	if err != nil {

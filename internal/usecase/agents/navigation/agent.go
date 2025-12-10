@@ -18,25 +18,28 @@ const (
 var _ output.SimpleAgent = (*Agent)(nil)
 
 type Agent struct {
-	llm          output.LLMPort
-	tools        output.ToolRegistry
-	logger       output.LoggerPort
-	systemPrompt string
-	evaluator    *evaluator.Evaluator
+	llm             output.LLMPort
+	tools           output.ToolRegistry
+	logger          output.LoggerPort
+	userInteraction output.UserInteractionPort
+	systemPrompt    string
+	evaluator       *evaluator.Evaluator
 }
 
 func New(
 	llm output.LLMPort,
 	tools output.ToolRegistry,
 	logger output.LoggerPort,
+	userInteraction output.UserInteractionPort,
 	systemPrompt string,
 ) *Agent {
 	return &Agent{
-		llm:          llm,
-		tools:        tools,
-		logger:       logger,
-		systemPrompt: systemPrompt,
-		evaluator:    evaluator.New(llm, logger),
+		llm:             llm,
+		tools:           tools,
+		logger:          logger,
+		userInteraction: userInteraction,
+		systemPrompt:    systemPrompt,
+		evaluator:       evaluator.New(llm, logger),
 	}
 }
 
@@ -119,6 +122,7 @@ func (a *Agent) executeWithIterations(ctx context.Context, task string) (string,
 	toolDefs := a.filterTools()
 
 	for iter := 1; iter <= maxIterations; iter++ {
+		a.userInteraction.ShowIteration(ctx, iter, maxIterations)
 		a.logger.Debug("Navigation agent iteration", "iteration", iter)
 
 		resp, err := a.llm.Chat(ctx, output.ChatRequest{
@@ -130,6 +134,10 @@ func (a *Agent) executeWithIterations(ctx context.Context, task string) (string,
 			return "", fmt.Errorf("llm request failed: %w", err)
 		}
 
+		if resp.Message.Content != "" {
+			a.userInteraction.ShowThinking(ctx, resp.Message.Content)
+		}
+
 		messages = append(messages, resp.Message)
 
 		if len(resp.Message.ToolCalls) == 0 {
@@ -137,7 +145,15 @@ func (a *Agent) executeWithIterations(ctx context.Context, task string) (string,
 		}
 
 		for _, tc := range resp.Message.ToolCalls {
+			a.userInteraction.ShowToolStart(ctx, tc.Name, tc.Arguments)
 			observation := a.executeTool(ctx, tc)
+
+			isError := false
+			if len(observation) > 7 && observation[:7] == "Error: " {
+				isError = true
+			}
+
+			a.userInteraction.ShowToolResult(ctx, tc.Name, observation, isError)
 
 			messages = append(messages, entity.Message{
 				Role:       entity.RoleTool,

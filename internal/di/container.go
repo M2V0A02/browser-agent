@@ -67,13 +67,13 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 	registerUserInteractionTools(subAgentTools, userInteraction, log)
 
 	simpleAgents := service.NewSimpleAgentRegistry()
-	registerSimpleAgents(simpleAgents, llm, subAgentTools, log)
+	registerSimpleAgents(simpleAgents, llm, subAgentTools, log, userInteraction)
 
 	orchestratorTools := service.NewToolRegistry()
 	registerUserInteractionTools(orchestratorTools, userInteraction, log)
 	registerRunAgentTool(orchestratorTools, simpleAgents, log)
 
-	orchestratorUC := orchestrator.New(llm, orchestratorTools, simpleAgents, log, prompts.OrchestratorPrompt)
+	orchestratorUC := orchestrator.New(llm, orchestratorTools, simpleAgents, log, userInteraction, prompts.OrchestratorPrompt)
 
 	return &Container{
 		Browser:         browser,
@@ -112,10 +112,10 @@ func registerUserInteractionTools(registry *service.ToolRegistryImpl, userIntera
 	registry.Register(tool.NewWaitUserActionTool(userInteraction, log))
 }
 
-func registerSimpleAgents(registry *service.SimpleAgentRegistryImpl, llm output.LLMPort, tools output.ToolRegistry, log output.LoggerPort) {
-	registry.Register(navigation.New(llm, tools, log, prompts.NavigationPrompt))
-	registry.Register(extraction.New(llm, tools, log, prompts.ExtractionPrompt))
-	registry.Register(form.New(llm, tools, log, prompts.FormPrompt))
+func registerSimpleAgents(registry *service.SimpleAgentRegistryImpl, llm output.LLMPort, tools output.ToolRegistry, log output.LoggerPort, userInteraction output.UserInteractionPort) {
+	registry.Register(navigation.New(llm, tools, log, userInteraction, prompts.NavigationPrompt))
+	registry.Register(extraction.New(llm, tools, log, userInteraction, prompts.ExtractionPrompt))
+	registry.Register(form.New(llm, tools, log, userInteraction, prompts.FormPrompt))
 }
 
 func registerRunAgentTool(registry *service.ToolRegistryImpl, agents output.SimpleAgentRegistry, log output.LoggerPort) {

@@ -17,23 +17,26 @@ const (
 )
 
 type UseCase struct {
-	llm          output.LLMPort
-	tools        output.ToolRegistry
-	logger       output.LoggerPort
-	systemPrompt string
+	llm             output.LLMPort
+	tools           output.ToolRegistry
+	logger          output.LoggerPort
+	userInteraction output.UserInteractionPort
+	systemPrompt    string
 }
 
 func New(
 	llm output.LLMPort,
 	tools output.ToolRegistry,
 	logger output.LoggerPort,
+	userInteraction output.UserInteractionPort,
 	systemPrompt string,
 ) *UseCase {
 	return &UseCase{
-		llm:          llm,
-		tools:        tools,
-		logger:       logger,
-		systemPrompt: systemPrompt,
+		llm:             llm,
+		tools:           tools,
+		logger:          logger,
+		userInteraction: userInteraction,
+		systemPrompt:    systemPrompt,
 	}
 }
 
@@ -46,6 +49,7 @@ func (uc *UseCase) Execute(ctx context.Context, task string) (*input.ExecuteResu
 	toolDefs := uc.tools.Definitions()
 
 	for iteration := 1; iteration <= maxIterations; iteration++ {
+		uc.userInteraction.ShowIteration(ctx, iteration, maxIterations)
 		uc.logger.Debug("Starting iteration", "iteration", iteration)
 
 		resp, err := uc.llm.Chat(ctx, output.ChatRequest{
@@ -55,6 +59,10 @@ func (uc *UseCase) Execute(ctx context.Context, task string) (*input.ExecuteResu
 		})
 		if err != nil {
 			return nil, fmt.Errorf("llm request failed: %w", err)
+		}
+
+		if resp.Message.Content != "" {
+			uc.userInteraction.ShowThinking(ctx, resp.Message.Content)
 		}
 
 		messages = append(messages, resp.Message)
@@ -67,7 +75,15 @@ func (uc *UseCase) Execute(ctx context.Context, task string) (*input.ExecuteResu
 		}
 
 		for _, tc := range resp.Message.ToolCalls {
+			uc.userInteraction.ShowToolStart(ctx, tc.Name, tc.Arguments)
 			observation := uc.executeTool(ctx, tc)
+
+			isError := false
+			if len(observation) > 7 && observation[:7] == "Error: " {
+				isError = true
+			}
+
+			uc.userInteraction.ShowToolResult(ctx, tc.Name, observation, isError)
 
 			messages = append(messages, entity.Message{
 				Role:       entity.RoleTool,
