@@ -70,6 +70,7 @@ type BrowserConfig struct {
 	NoSandbox               bool
 	DevTools                bool
 	DisableSecurityFeatures bool
+	EnableTrace             bool
 }
 
 func DefaultConfig() BrowserConfig {
@@ -111,7 +112,7 @@ func NewBrowserAdapter(ctx context.Context, config BrowserConfig) (*BrowserAdapt
 
 	browser := rod.New().
 		ControlURL(launchURL).
-		Trace(true).
+		Trace(config.EnableTrace).
 		SlowMotion(config.SlowMotion).
 		MustConnect()
 

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	maxIterations     = 5
+	maxIterations     = 10
 	maxRetries        = 2
 	maxObservationLen = 20000
 )

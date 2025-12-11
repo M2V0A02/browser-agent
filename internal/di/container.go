@@ -30,12 +30,13 @@ type Container struct {
 }
 
 type Config struct {
-	OpenRouterAPIKey string
-	OpenRouterModel  string
-	BrowserHeadless  bool
-	SystemPrompt     string
-	ThinkingMode     bool
-	ThinkingBudget   int
+	OpenRouterAPIKey  string
+	OpenRouterModel   string
+	BrowserHeadless   bool
+	BrowserEnableTrace bool
+	SystemPrompt      string
+	ThinkingMode      bool
+	ThinkingBudget    int
 }
 
 func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
@@ -46,6 +47,7 @@ func NewContainer(ctx context.Context, cfg Config) (*Container, error) {
 
 	browserCfg := rod.DefaultConfig()
 	browserCfg.Headless = cfg.BrowserHeadless
+	browserCfg.EnableTrace = cfg.BrowserEnableTrace
 	browser, err := rod.NewBrowserAdapter(ctx, browserCfg)
 	if err != nil {
 		log.Close()

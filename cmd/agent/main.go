@@ -21,13 +21,15 @@ func main() {
 
 	thinkingMode := envService.GetBool("THINKING_MODE", true)
 	thinkingBudget := envService.GetInt("THINKING_BUDGET", 10000)
+	browserTrace := envService.GetBool("BROWSER_TRACE", false)
 
 	container, err := di.NewContainer(ctx, di.Config{
-		OpenRouterAPIKey: envService.MustGet("OPENROUTER_API_KEY"),
-		OpenRouterModel:  envService.MustGet("OPENROUTER_MODEL_NAME"),
-		BrowserHeadless:  false,
-		ThinkingMode:     thinkingMode,
-		ThinkingBudget:   thinkingBudget,
+		OpenRouterAPIKey:   envService.MustGet("OPENROUTER_API_KEY"),
+		OpenRouterModel:    envService.MustGet("OPENROUTER_MODEL_NAME"),
+		BrowserHeadless:    false,
+		BrowserEnableTrace: browserTrace,
+		ThinkingMode:       thinkingMode,
+		ThinkingBudget:     thinkingBudget,
 	})
 	if err != nil {
 		log.Fatalf("Ошибка инициализации: %v", err)
@@ -55,4 +57,7 @@ func main() {
 	container.Logger.Info("Task completed", "iterations", result.Iterations)
 	fmt.Println("\nФИНАЛЬНЫЙ ОТВЕТ:")
 	fmt.Println(result.FinalAnswer)
+
+	fmt.Println("\nНажмите Enter чтобы закрыть браузер...")
+	_, _ = reader.ReadString('\n')
 }

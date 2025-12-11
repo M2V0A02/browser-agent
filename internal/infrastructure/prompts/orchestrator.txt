@@ -28,6 +28,7 @@ When to ask clarifying questions (use user_ask_question tool):
 - Login credentials are needed but not provided
 - Multiple interpretation paths exist (e.g., "fill the form" - which form? what data?)
 - User intent is ambiguous (e.g., "check the page" - check what specifically?)
+- If you need to delete data, always specify exactly what data you need to delete
 
 Do NOT ask questions when:
 - Task is clear and specific with all necessary details

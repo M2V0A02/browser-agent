@@ -1,6 +1,7 @@
 package env
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -11,7 +12,22 @@ import (
 type EnvService struct{}
 
 func NewEnvService() *EnvService {
-	_ = godotenv.Load()
+	appEnv := os.Getenv("APP_ENV")
+	if appEnv == "" {
+		appEnv = "dev"
+	}
+
+	if err := godotenv.Load(".env"); err != nil {
+		log.Printf("Info: no .env file with secrets found (this is OK for CI/CD)")
+	}
+
+	envFile := fmt.Sprintf(".env.%s", appEnv)
+	if err := godotenv.Overload(envFile); err != nil {
+		log.Printf("Warning: could not load %s: %v", envFile, err)
+	}
+
+	log.Printf("Environment loaded: APP_ENV=%s", appEnv)
+
 	return &EnvService{}
 }
 

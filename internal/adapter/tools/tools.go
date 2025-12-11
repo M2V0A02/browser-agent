@@ -338,7 +338,7 @@ func NewAskQuestionTool(userInteraction output.UserInteractionPort, logger outpu
 
 func (t *AskQuestionTool) Name() entity.ToolName { return entity.ToolUserAskQuestion }
 func (t *AskQuestionTool) Description() string {
-	return "Ask the user a question and wait for their response. Use this for gathering preferences, clarifications, or non-sensitive information. Authentication and credentials are handled automatically by the system - do not request them through this tool. Returns the user's text response."
+	return "Always use this tool if you don't have enough context to work effectively."
 }
 func (t *AskQuestionTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{

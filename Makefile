@@ -3,14 +3,19 @@
 BINARY_NAME=ai-agent
 BUILD_DIR=build
 MAIN_PATH=cmd/agent/main.go
+APP_ENV ?= dev
 
 help:
 	@echo "Доступные команды:"
-	@echo "  make build    - Собрать бинарный файл"
-	@echo "  make run      - Запустить агента"
-	@echo "  make test     - Запустить тесты"
-	@echo "  make clean    - Очистить собранные файлы"
-	@echo "  make install  - Установить в \$$GOPATH/bin"
+	@echo "  make build       - Собрать бинарный файл"
+	@echo "  make run         - Запустить агента в dev режиме (APP_ENV=dev)"
+	@echo "  make run-prod    - Запустить собранный бинарник в prod режиме (APP_ENV=prod)"
+	@echo "  make test        - Запустить тесты (APP_ENV=test)"
+	@echo "  make clean       - Очистить собранные файлы"
+	@echo "  make install     - Установить в \$$GOPATH/bin"
+	@echo ""
+	@echo "Переменные окружения:"
+	@echo "  APP_ENV=<env>    - Выбрать окружение (dev/test/prod)"
 
 build:
 	@echo "Сборка $(BINARY_NAME)..."
@@ -19,15 +24,19 @@ build:
 	@echo "✓ Бинарник создан: $(BUILD_DIR)/$(BINARY_NAME)"
 
 run:
-	@go run $(MAIN_PATH)
+	@APP_ENV=dev go run $(MAIN_PATH)
+
+run-prod:
+	@echo "Запуск в production режиме..."
+	@APP_ENV=prod $(BUILD_DIR)/$(BINARY_NAME)
 
 test:
 	@echo "Запуск тестов..."
-	@go test ./... -v
+	@APP_ENV=test go test ./... -v
 
 test-coverage:
 	@echo "Запуск тестов с покрытием..."
-	@go test ./... -coverprofile=coverage.out
+	@APP_ENV=test go test ./... -coverprofile=coverage.out
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "✓ Отчет о покрытии: coverage.html"
 
