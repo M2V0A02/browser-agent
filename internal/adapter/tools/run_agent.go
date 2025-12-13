@@ -29,30 +29,35 @@ func (t *RunAgentTool) Name() entity.ToolName {
 }
 
 func (t *RunAgentTool) Description() string {
-	return `Run a specialized agent to handle a specific subtask. Use this to delegate work to expert agents.
+	// Build dynamic list of available agents
+	agents := t.agentRegistry.List()
+	agentList := ""
+	for _, agent := range agents {
+		agentList += fmt.Sprintf("- %s: %s\n", agent.GetSubAgentType(), agent.GetDescription())
+	}
+
+	return fmt.Sprintf(
+		`Run a specialized agent to handle a specific subtask. Use this to delegate work to expert agents.
 
 Available agents:
-- navigation: Navigate to URLs, explore pages, find elements and sections
-- extraction: Extract structured data, lists, tables from pages
-- form: Fill forms, click buttons, handle login/registration flows
-- analysis: Analyze page content, verify information, take screenshots
-
-Use this when you need to:
-- Navigate to a new page or explore the current page structure
-- Extract multiple data items from a page
-- Interact with forms and submit data
-- Verify page state or analyze content
-
-Each agent has 5 iterations to complete the task and will return structured results.`
+%s
+Each agent has multiple iterations to complete the task and will return structured results.`, agentList)
 }
 
 func (t *RunAgentTool) Parameters() map[string]interface{} {
+	// Build dynamic enum of available agent types
+	agents := t.agentRegistry.List()
+	agentTypes := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		agentTypes = append(agentTypes, string(agent.GetSubAgentType()))
+	}
+
 	return map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
 			"agent_type": map[string]interface{}{
-				"type": "string",
-				"enum": []string{"navigation", "extraction", "form", "analysis"},
+				"type":        "string",
+				"enum":        agentTypes,
 				"description": "Type of agent to run",
 			},
 			"task": map[string]interface{}{

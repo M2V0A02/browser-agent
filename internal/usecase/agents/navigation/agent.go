@@ -6,12 +6,10 @@ import (
 
 	"browser-agent/internal/application/port/output"
 	"browser-agent/internal/domain/entity"
-	"browser-agent/internal/usecase/evaluator"
 )
 
 const (
 	maxIterations     = 10
-	maxRetries        = 2
 	maxObservationLen = 20000
 )
 
@@ -23,7 +21,6 @@ type Agent struct {
 	logger          output.LoggerPort
 	userInteraction output.UserInteractionPort
 	systemPrompt    string
-	evaluator       *evaluator.Evaluator
 }
 
 func New(
@@ -39,7 +36,6 @@ func New(
 		logger:          logger,
 		userInteraction: userInteraction,
 		systemPrompt:    systemPrompt,
-		evaluator:       evaluator.New(llm, logger),
 	}
 }
 
@@ -52,65 +48,12 @@ func (a *Agent) GetSubAgentType() entity.SubAgentType {
 }
 
 func (a *Agent) GetDescription() string {
-	return "Navigate to URLs, explore pages, scroll, and locate elements. Use ONLY for opening websites and moving between pages. Does NOT fill forms or extract data."
+	return "Navigate to URLs and verify pages loaded. Does NOT analyze structure, find selectors, fill forms, or extract data."
 }
 
 func (a *Agent) Execute(ctx context.Context, task string) (string, error) {
 	a.logger.Info("Navigation agent executing", "task", task)
-
-	var lastResult string
-	originalTask := task
-
-	for retry := 0; retry <= maxRetries; retry++ {
-		if retry > 0 {
-			a.logger.Info("Retrying navigation with feedback", "retry", retry)
-		}
-
-		result, err := a.executeWithIterations(ctx, task)
-		if err != nil {
-			return "", err
-		}
-
-		lastResult = result
-
-		eval, err := a.evaluator.Evaluate(ctx, entity.EvaluationCriteria{
-			TaskDescription: originalTask,
-			ActualResult:    result,
-			AgentType:       entity.AgentTypeNavigation,
-		})
-		if err != nil {
-			a.logger.Warn("Evaluation failed, returning result anyway", "error", err)
-			return result, nil
-		}
-
-		if eval.Success {
-			a.logger.Info("Navigation successful",
-				"confidence", eval.Confidence,
-				"retry_number", retry,
-			)
-			return result, nil
-		}
-
-		if !eval.ShouldRetry || retry == maxRetries {
-			a.logger.Warn("Navigation suboptimal but not retrying",
-				"confidence", eval.Confidence,
-				"issues", eval.Issues,
-			)
-			return result, nil
-		}
-
-		a.logger.Info("Navigation needs improvement, retrying",
-			"confidence", eval.Confidence,
-			"issues", eval.Issues,
-		)
-
-		task = fmt.Sprintf("%s\n\nPREVIOUS ATTEMPT FEEDBACK:\n%s\n\nIssues to fix:\n", originalTask, eval.Feedback)
-		for i, issue := range eval.Issues {
-			task += fmt.Sprintf("%d. %s\n", i+1, issue)
-		}
-	}
-
-	return lastResult, nil
+	return a.executeWithIterations(ctx, task)
 }
 
 func (a *Agent) executeWithIterations(ctx context.Context, task string) (string, error) {
@@ -164,7 +107,31 @@ func (a *Agent) executeWithIterations(ctx context.Context, task string) (string,
 		}
 	}
 
-	return "", fmt.Errorf("max iterations (%d) exceeded", maxIterations)
+	// Summary iteration: force agent to provide final report
+	a.logger.Info("Max iterations reached, requesting final summary")
+	messages = append(messages, entity.Message{
+		Role: entity.RoleUser,
+		Content: fmt.Sprintf(`CRITICAL: Maximum iterations reached. You MUST provide your FINAL REPORT now.
+
+Format your response as:
+- If task completed successfully: Provide your success report as instructed
+- If task failed: Start with "FAILED:" and provide detailed failure report as instructed in your prompt
+- If task partially completed: Start with "PARTIAL SUCCESS:" and explain what was done
+
+This is your LAST response. Do NOT call any tools. Provide text response ONLY.`),
+	})
+
+	summaryResp, err := a.llm.Chat(ctx, output.ChatRequest{
+		Messages:    messages,
+		Tools:       nil, // No tools allowed in summary iteration
+		Temperature: 0.0,
+	})
+	if err != nil {
+		return "", fmt.Errorf("summary iteration failed: %w", err)
+	}
+
+	a.logger.Info("Summary report received", "contentLen", len(summaryResp.Message.Content))
+	return summaryResp.Message.Content, nil
 }
 
 func (a *Agent) executeTool(ctx context.Context, tc entity.ToolCall) string {

@@ -106,3 +106,41 @@ I filled the form and clicked submit. Everything looks good.
 - HANDLE MANUAL STEPS: For CAPTCHA/2FA, clearly state user action is needed
 - BATCH OPERATIONS: When filling multiple fields, use batch fill and list all fields
 - If ask_question is used, explain what information was requested and why
+
+## HANDLING FAILURES
+
+If you cannot complete the task (elements not found, click failed, validation errors persist):
+
+Return a DETAILED FAILURE REPORT starting with "FAILED:" prefix:
+
+Example:
+"""
+FAILED: Could not submit login form
+
+Attempts:
+- Iteration 1-2: observe → found email and password fields
+- Iteration 3: fill email + password → success
+- Iteration 4: click submit button (button[type="submit"]) → click failed "Element not clickable"
+- Iteration 5: tried alternate selector (button.login-btn) → same error
+- Iteration 6-7: searched for submit button → found multiple candidates
+- Iteration 8: tried click with JavaScript → still failed
+
+Actions Taken:
+- Filled email: input[name="email"] with "user@example.com" ✓
+- Filled password: input[name="password"] with "••••••••" ✓
+- Click submit: FAILED multiple attempts
+
+Current State:
+- Form fields are filled correctly
+- Submit button exists but not clickable (possibly overlay or disabled)
+- No validation errors visible
+- Still on login page
+
+Suggestion: Button might be disabled due to client-side validation or CAPTCHA. Orchestrator should check if CAPTCHA is present or ask user to click manually.
+"""
+
+IMPORTANT:
+- Include WHAT you tried (which fields, which clicks, which selectors)
+- Include WHAT succeeded and what FAILED
+- Include CURRENT form state (what's filled, what's not)
+- Include SUGGESTIONS for orchestrator (alternative approaches, user intervention)

@@ -22,7 +22,7 @@ Best practices:
 - ALWAYS include selectors for clickable elements (checkboxes, buttons, links) for follow-up actions
 
 CRITICAL FOR EFFICIENCY:
-- You have ONLY 5 iterations - use them wisely
+- You have a limited number of iterations - use them wisely
 - If task includes selectors like "extract from .mail-item elements", DON'T waste time searching - use query_elements immediately
 - observe tool shows ALL visible elements - use it to quickly find the right selector pattern
 - Prioritize query_elements over multiple observe/search calls
@@ -115,4 +115,51 @@ I found some products. Here they are: [object Object], [object Object]
 - Include SELECTORS: If items are clickable/interactive, provide selectors
 - LIMIT OUTPUT: If extracting >20 items, show first 10 and mention "... X more items"
 - Use observe FIRST to understand page structure before extracting
-- If extraction fails, explain why and what was found instead
+- PARTIAL SUCCESS: If you found some but not all data, mark it as "PARTIAL SUCCESS:"
+
+## HANDLING FAILURES
+
+If you cannot complete the task (elements not found, selectors don't work):
+
+Return a DETAILED FAILURE REPORT starting with "FAILED:" or "PARTIAL SUCCESS:" prefix:
+
+Example FAILED:
+"""
+FAILED: Could not extract email list from page
+
+Attempts:
+- Iteration 1-2: observe → found 64 elements, no email list pattern
+- Iteration 3-4: search "email", "письмо" → found text but no structured list
+- Iteration 5-7: tried selectors .mail-item, .message, .email → none exist
+- Iteration 8-9: scrolled down and re-observed → no changes
+
+What I found:
+- Page loaded: URL=mail.yandex.ru, Title="Входящие"
+- Elements visible: buttons, navigation, but no email items
+- Possible reasons: page needs login, different URL, or elements load dynamically
+
+Suggestion: Check if user is logged in. Try waiting for dynamic content or use a different URL.
+"""
+
+Example PARTIAL SUCCESS:
+"""
+PARTIAL SUCCESS: Extracted 8 out of 10 requested emails, missing date field
+
+Extracted Data:
+1. Subject: "Meeting tomorrow", Sender: "boss@company.com", Checkbox: input#mail-1
+2. Subject: "Invoice #123", Sender: "billing@shop.com", Checkbox: input#mail-2
+[... 6 more ...]
+
+Missing:
+- Date field not found for any email
+- Tried selectors: .date, .time, .Text_typography → none contain dates
+- Dates might be in data attributes or hidden elements
+
+Suggestion: Orchestrator can work with this partial data or ask for alternative approach to find dates.
+"""
+
+IMPORTANT:
+- Include WHAT you tried (tools used, selectors tested)
+- Include WHAT you found (even if incomplete)
+- Include WHY extraction failed (elements missing, wrong selectors)
+- Include SUGGESTIONS for orchestrator
