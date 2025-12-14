@@ -93,9 +93,10 @@ type SearchElement struct {
 
 // PageStructure represents semantic page structure
 type PageStructure struct {
-	URL      string
-	Title    string
-	Elements []StructureElement
+	URL             string
+	Title           string
+	Elements        []StructureElement
+	RepeatedClasses map[string]int // class name -> count (only classes appearing >= 2 times)
 }
 
 type StructureElement struct {

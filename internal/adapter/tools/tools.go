@@ -592,6 +592,46 @@ SEMANTIC STRUCTURE:
 		}
 	}
 
+	// Add repeated classes section
+	if len(structure.RepeatedClasses) > 0 {
+		result += "\nREPEATED CLASSES (potential list items - use with search/query_elements):\n"
+
+		// Sort classes by count (descending) for better visibility
+		type classCount struct {
+			name  string
+			count int
+		}
+		var sortedClasses []classCount
+		for name, count := range structure.RepeatedClasses {
+			sortedClasses = append(sortedClasses, classCount{name, count})
+		}
+
+		// Simple sort by count (descending)
+		for i := 0; i < len(sortedClasses); i++ {
+			for j := i + 1; j < len(sortedClasses); j++ {
+				if sortedClasses[j].count > sortedClasses[i].count {
+					sortedClasses[i], sortedClasses[j] = sortedClasses[j], sortedClasses[i]
+				}
+			}
+		}
+
+		displayCount := 100
+		if len(sortedClasses) < displayCount {
+			displayCount = len(sortedClasses)
+		}
+
+		for i := 0; i < displayCount; i++ {
+			cls := sortedClasses[i]
+			result += fmt.Sprintf("- .%s (%d elements)\n", cls.name, cls.count)
+		}
+
+		if len(sortedClasses) > displayCount {
+			result += fmt.Sprintf("... and %d more classes\n", len(sortedClasses)-displayCount)
+		}
+
+		result += "\nTIP: Use search(type=\"selector\", query=\".ClassName\") to find these elements\n"
+	}
+
 	return result, nil
 }
 
@@ -720,10 +760,19 @@ func (t *SearchTool) Parameters() map[string]interface{} {
 }
 
 func (t *SearchTool) Execute(ctx context.Context, args string) (string, error) {
-	var req entity.SearchRequest
-	if err := json.Unmarshal([]byte(args), &req); err != nil {
+	var input struct {
+		Type  string  `json:"type"`
+		Query string  `json:"query"`
+		Limit float64 `json:"limit"`
+	}
+
+	if err := json.Unmarshal([]byte(args), &input); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
 	}
+	var req entity.SearchRequest
+	req.Type = input.Type
+	req.Query = input.Query
+	req.Limit = int(input.Limit)
 
 	if req.Type == "" {
 		return "", fmt.Errorf("type is required")
@@ -756,9 +805,9 @@ func formatSearchResult(result *entity.SearchResult) string {
 	// Use new Results format if available
 	if len(result.Results) > 0 {
 		jsonBytes, err := json.MarshalIndent(map[string]interface{}{
-			"type":  result.Type,
-			"query": result.Query,
-			"found": result.Count,
+			"type":    result.Type,
+			"query":   result.Query,
+			"found":   result.Count,
 			"results": result.Results,
 		}, "", "  ")
 		if err != nil {

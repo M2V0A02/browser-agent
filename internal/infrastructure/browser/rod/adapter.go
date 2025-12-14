@@ -713,7 +713,30 @@ func (b *BrowserAdapter) GetPageStructure(ctx context.Context) (*entity.PageStru
 			return 0;
 		});
 
-		return result.slice(0, 100); // Limit to 100 elements
+		// Collect class frequency (all classes on page)
+		const classCount = {};
+		const allElements = document.querySelectorAll('*');
+		for (const el of allElements) {
+			if (el.className && typeof el.className === 'string') {
+				const classes = el.className.split(' ').filter(c => c && c.length > 0);
+				for (const cls of classes) {
+					classCount[cls] = (classCount[cls] || 0) + 1;
+				}
+			}
+		}
+
+		// Filter to only repeated classes (>= 2)
+		const repeatedClasses = {};
+		for (const [cls, count] of Object.entries(classCount)) {
+			if (count >= 2) {
+				repeatedClasses[cls] = count;
+			}
+		}
+
+		return {
+			elements: result.slice(0, 100),
+			repeatedClasses: repeatedClasses
+		};
 	}`
 
 	result, err := b.page.Context(timeoutCtx).Eval(jsCode)
@@ -721,9 +744,19 @@ func (b *BrowserAdapter) GetPageStructure(ctx context.Context) (*entity.PageStru
 		return nil, fmt.Errorf("failed to get page structure: %w", err)
 	}
 
-	var rawElements []map[string]interface{}
-	if err := result.Value.Unmarshal(&rawElements); err != nil {
+	var rawResult map[string]interface{}
+	if err := result.Value.Unmarshal(&rawResult); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal page structure: %w", err)
+	}
+
+	// Parse elements array
+	var rawElements []map[string]interface{}
+	if elementsData, ok := rawResult["elements"].([]interface{}); ok {
+		for _, e := range elementsData {
+			if elem, ok := e.(map[string]interface{}); ok {
+				rawElements = append(rawElements, elem)
+			}
+		}
 	}
 
 	elements := make([]entity.StructureElement, 0, len(rawElements))
@@ -775,10 +808,21 @@ func (b *BrowserAdapter) GetPageStructure(ctx context.Context) (*entity.PageStru
 		elements = append(elements, elem)
 	}
 
+	// Parse repeated classes
+	repeatedClasses := make(map[string]int)
+	if classesData, ok := rawResult["repeatedClasses"].(map[string]interface{}); ok {
+		for className, count := range classesData {
+			if countFloat, ok := count.(float64); ok {
+				repeatedClasses[className] = int(countFloat)
+			}
+		}
+	}
+
 	return &entity.PageStructure{
-		URL:      info.URL,
-		Title:    info.Title,
-		Elements: elements,
+		URL:             info.URL,
+		Title:           info.Title,
+		Elements:        elements,
+		RepeatedClasses: repeatedClasses,
 	}, nil
 }
 
