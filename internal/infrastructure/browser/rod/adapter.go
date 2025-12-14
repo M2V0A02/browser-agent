@@ -593,6 +593,195 @@ func (b *BrowserAdapter) GetPageContext(ctx context.Context) (*entity.PageContex
 	}, nil
 }
 
+func (b *BrowserAdapter) GetPageStructure(ctx context.Context) (*entity.PageStructure, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if err := b.checkState(); err != nil {
+		return nil, err
+	}
+
+	info, err := b.page.Info()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get page info: %w", err)
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, b.timeout)
+	defer cancel()
+
+	jsCode := `() => {
+		const result = [];
+		const seenElements = new Set();
+
+		// Important semantic elements and elements with ID/data attributes
+		const importantSelectors = [
+			'header', 'nav', 'main', 'aside', 'footer', 'section', 'article',
+			'[id]', '[data-testid]', '[data-id]', '[data-component]',
+			'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+			'div[class*="content"]', 'div[class*="container"]',
+			'div[class*="wrapper"]', 'div[class*="main"]'
+		];
+
+		function getElementInfo(el, level) {
+			// Skip if already seen
+			const elKey = el.tagName + (el.id || '') + (el.className || '');
+			if (seenElements.has(elKey)) return null;
+			seenElements.add(elKey);
+
+			// Build selector
+			let selector = '';
+			if (el.id) {
+				selector = '#' + el.id;
+			} else if (el.className && typeof el.className === 'string') {
+				const classes = el.className.split(' ').filter(c => c && c.length > 0);
+				if (classes.length > 0 && classes.length <= 3) {
+					selector = el.tagName.toLowerCase() + '.' + classes.join('.');
+				} else if (classes.length > 3) {
+					selector = el.tagName.toLowerCase() + '.' + classes.slice(0, 2).join('.');
+				} else {
+					selector = el.tagName.toLowerCase();
+				}
+			} else {
+				selector = el.tagName.toLowerCase();
+			}
+
+			// Get text (first 100 chars)
+			let text = '';
+			const childTextNodes = [];
+			for (const child of el.childNodes) {
+				if (child.nodeType === Node.TEXT_NODE) {
+					childTextNodes.push(child.nodeValue.trim());
+				}
+			}
+			text = childTextNodes.join(' ').substring(0, 100);
+
+			// Get classes
+			const classes = [];
+			if (el.className && typeof el.className === 'string') {
+				classes.push(...el.className.split(' ').filter(c => c && c.length > 0));
+			}
+
+			// Get important attributes
+			const attrs = {};
+			const importantAttrs = ['role', 'aria-label', 'data-testid', 'data-id', 'data-component'];
+			for (const attr of importantAttrs) {
+				if (el.hasAttribute(attr)) {
+					attrs[attr] = el.getAttribute(attr);
+				}
+			}
+
+			return {
+				tagName: el.tagName.toLowerCase(),
+				selector: selector,
+				id: el.id || '',
+				classes: classes,
+				text: text,
+				level: level,
+				children: el.children.length,
+				attributes: attrs
+			};
+		}
+
+		function collectStructure(container, level, maxLevel) {
+			if (level > maxLevel) return;
+
+			for (const selector of importantSelectors) {
+				try {
+					const elements = container.querySelectorAll(selector);
+					for (const el of elements) {
+						const info = getElementInfo(el, level);
+						if (info) {
+							result.push(info);
+							// Recurse for semantic elements
+							if (['header', 'nav', 'main', 'aside', 'footer', 'section', 'article'].includes(info.tagName)) {
+								collectStructure(el, level + 1, maxLevel);
+							}
+						}
+					}
+				} catch (e) {
+					// Skip invalid selectors
+				}
+			}
+		}
+
+		collectStructure(document.body, 0, 3);
+
+		// Sort by level for tree display
+		result.sort((a, b) => {
+			if (a.level !== b.level) return a.level - b.level;
+			return 0;
+		});
+
+		return result.slice(0, 100); // Limit to 100 elements
+	}`
+
+	result, err := b.page.Context(timeoutCtx).Eval(jsCode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get page structure: %w", err)
+	}
+
+	var rawElements []map[string]interface{}
+	if err := result.Value.Unmarshal(&rawElements); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal page structure: %w", err)
+	}
+
+	elements := make([]entity.StructureElement, 0, len(rawElements))
+	for _, raw := range rawElements {
+		elem := entity.StructureElement{
+			Attributes: make(map[string]string),
+		}
+
+		if tagName, ok := raw["tagName"].(string); ok {
+			elem.TagName = tagName
+		}
+
+		if selector, ok := raw["selector"].(string); ok {
+			elem.Selector = selector
+		}
+
+		if id, ok := raw["id"].(string); ok {
+			elem.ID = id
+		}
+
+		if classes, ok := raw["classes"].([]interface{}); ok {
+			for _, c := range classes {
+				if class, ok := c.(string); ok {
+					elem.Classes = append(elem.Classes, class)
+				}
+			}
+		}
+
+		if text, ok := raw["text"].(string); ok {
+			elem.Text = text
+		}
+
+		if level, ok := raw["level"].(float64); ok {
+			elem.Level = int(level)
+		}
+
+		if children, ok := raw["children"].(float64); ok {
+			elem.Children = int(children)
+		}
+
+		if attrs, ok := raw["attributes"].(map[string]interface{}); ok {
+			for k, v := range attrs {
+				if strVal, ok := v.(string); ok {
+					elem.Attributes[k] = strVal
+				}
+			}
+		}
+
+		elements = append(elements, elem)
+	}
+
+	return &entity.PageStructure{
+		URL:      info.URL,
+		Title:    info.Title,
+		Elements: elements,
+	}, nil
+}
+
 func (b *BrowserAdapter) QueryElements(ctx context.Context, req entity.QueryElementsRequest) (*entity.QueryElementsResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -730,92 +919,411 @@ func (b *BrowserAdapter) Search(ctx context.Context, req entity.SearchRequest) (
 	timeoutCtx, cancel := context.WithTimeout(ctx, b.timeout)
 	defer cancel()
 
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+
 	switch req.Type {
 	case "text":
-		return b.searchByText(timeoutCtx, req.Query)
+		return b.searchByTextExact(timeoutCtx, req.Query, req.Limit)
+	case "contains":
+		return b.searchByTextContains(timeoutCtx, req.Query, req.Limit)
+	case "selector":
+		return b.searchBySelector(timeoutCtx, req.Query, req.Limit)
 	case "id":
 		return b.searchByID(timeoutCtx, req.Query)
 	case "attribute":
 		return b.searchByAttribute(timeoutCtx, req.Query)
 	default:
-		return nil, fmt.Errorf("invalid search type: %s, must be 'text', 'id', or 'attribute'", req.Type)
+		return nil, fmt.Errorf("invalid search type: %s, must be 'text', 'contains', 'selector', or 'id'", req.Type)
 	}
 }
 
-func (b *BrowserAdapter) searchByText(ctx context.Context, query string) (*entity.SearchResult, error) {
-	jsCode := `(searchText) => {
-		const walker = document.createTreeWalker(
-			document.body,
-			NodeFilter.SHOW_TEXT,
-			{
-				acceptNode: function(node) {
-					if (node.nodeValue.trim().length === 0) return NodeFilter.FILTER_REJECT;
-					const parent = node.parentElement;
-					if (!parent) return NodeFilter.FILTER_REJECT;
-					const style = window.getComputedStyle(parent);
-					if (style.display === 'none' || style.visibility === 'hidden') return NodeFilter.FILTER_REJECT;
-					return NodeFilter.FILTER_ACCEPT;
+func (b *BrowserAdapter) searchByTextExact(ctx context.Context, query string, limit int) (*entity.SearchResult, error) {
+	jsCode := `(searchText, maxResults) => {
+		function getElementSelector(el) {
+			if (el.id) {
+				return '#' + el.id;
+			} else if (el.className && typeof el.className === 'string') {
+				const classes = el.className.split(' ').filter(c => c && c.length > 0);
+				if (classes.length > 0) {
+					return el.tagName.toLowerCase() + '.' + classes.slice(0, 2).join('.');
 				}
 			}
+			return el.tagName.toLowerCase();
+		}
+
+		function getParentInfo(el) {
+			const parent = el.parentElement;
+			if (!parent || parent.tagName === 'BODY') return null;
+
+			const classes = [];
+			if (parent.className && typeof parent.className === 'string') {
+				classes.push(...parent.className.split(' ').filter(c => c && c.length > 0));
+			}
+
+			return {
+				element: parent.tagName.toLowerCase(),
+				selector: getElementSelector(parent),
+				id: parent.id || '',
+				classes: classes
+			};
+		}
+
+		const results = [];
+		const seenElements = new Set();
+
+		// Find all elements containing the exact text
+		const walker = document.createTreeWalker(
+			document.body,
+			NodeFilter.SHOW_ELEMENT,
+			null
 		);
 
-		const searchLower = searchText.toLowerCase();
-		const matches = [];
-		let node;
+		let currentNode;
+		while ((currentNode = walker.nextNode()) && results.length < maxResults) {
+			const element = currentNode;
 
-		while (node = walker.nextNode()) {
-			const text = node.nodeValue;
-			const textLower = text.toLowerCase();
-			const index = textLower.indexOf(searchLower);
+			// Get direct text content (not including children)
+			let directText = '';
+			for (const child of element.childNodes) {
+				if (child.nodeType === Node.TEXT_NODE) {
+					directText += child.nodeValue;
+				}
+			}
+			directText = directText.trim();
 
-			if (index !== -1) {
-				const start = Math.max(0, index - 100);
-				const end = Math.min(text.length, index + searchText.length + 100);
-				const context = text.substring(start, end);
-				matches.push((start > 0 ? '...' : '') + context + (end < text.length ? '...' : ''));
+			if (directText === searchText) {
+				const selector = getElementSelector(element);
+				const key = selector + element.tagName;
+
+				if (!seenElements.has(key)) {
+					seenElements.add(key);
+
+					const classes = [];
+					if (element.className && typeof element.className === 'string') {
+						classes.push(...element.className.split(' ').filter(c => c && c.length > 0));
+					}
+
+					results.push({
+						element: element.tagName.toLowerCase(),
+						text: directText,
+						selector: selector,
+						id: element.id || '',
+						classes: classes,
+						parent: getParentInfo(element)
+					});
+				}
 			}
 		}
 
-		return matches;
+		return results;
 	}`
 
-	result, err := b.page.Context(ctx).Eval(jsCode, query)
+	result, err := b.page.Context(ctx).Eval(jsCode, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search text: %w", err)
 	}
 
-	var matches []string
-	if err := result.Value.Unmarshal(&matches); err != nil {
+	var rawResults []map[string]interface{}
+	if err := result.Value.Unmarshal(&rawResults); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal text search results: %w", err)
 	}
 
-	if len(matches) == 0 {
+	if len(rawResults) == 0 {
 		return &entity.SearchResult{
-			Type:    "text",
-			Found:   false,
-			Content: "",
+			Type:  "text",
+			Found: false,
+			Query: query,
+			Count: 0,
 		}, nil
 	}
 
-	totalLength := 0
-	content := ""
-	for i, match := range matches {
-		if totalLength+len(match) > 1000 {
-			break
+	return b.convertToSearchResult("text", query, rawResults), nil
+}
+
+func (b *BrowserAdapter) searchByTextContains(ctx context.Context, query string, limit int) (*entity.SearchResult, error) {
+	jsCode := `(searchText, maxResults) => {
+		function getElementSelector(el) {
+			if (el.id) {
+				return '#' + el.id;
+			} else if (el.className && typeof el.className === 'string') {
+				const classes = el.className.split(' ').filter(c => c && c.length > 0);
+				if (classes.length > 0) {
+					return el.tagName.toLowerCase() + '.' + classes.slice(0, 2).join('.');
+				}
+			}
+			return el.tagName.toLowerCase();
 		}
-		if i > 0 {
-			content += "\n---\n"
-			totalLength += 5
+
+		function getParentInfo(el) {
+			const parent = el.parentElement;
+			if (!parent || parent.tagName === 'BODY') return null;
+
+			const classes = [];
+			if (parent.className && typeof parent.className === 'string') {
+				classes.push(...parent.className.split(' ').filter(c => c && c.length > 0));
+			}
+
+			return {
+				element: parent.tagName.toLowerCase(),
+				selector: getElementSelector(parent),
+				id: parent.id || '',
+				classes: classes
+			};
 		}
-		content += match
-		totalLength += len(match)
+
+		const results = [];
+		const seenElements = new Set();
+		const searchLower = searchText.toLowerCase();
+
+		// Find all elements containing the text
+		const walker = document.createTreeWalker(
+			document.body,
+			NodeFilter.SHOW_ELEMENT,
+			null
+		);
+
+		let currentNode;
+		while ((currentNode = walker.nextNode()) && results.length < maxResults) {
+			const element = currentNode;
+
+			// Get direct text content (not including children)
+			let directText = '';
+			for (const child of element.childNodes) {
+				if (child.nodeType === Node.TEXT_NODE) {
+					directText += child.nodeValue;
+				}
+			}
+			directText = directText.trim();
+
+			if (directText.toLowerCase().includes(searchLower)) {
+				const selector = getElementSelector(element);
+				const key = selector + element.tagName;
+
+				if (!seenElements.has(key)) {
+					seenElements.add(key);
+
+					const classes = [];
+					if (element.className && typeof element.className === 'string') {
+						classes.push(...element.className.split(' ').filter(c => c && c.length > 0));
+					}
+
+					results.push({
+						element: element.tagName.toLowerCase(),
+						text: directText.substring(0, 200),
+						selector: selector,
+						id: element.id || '',
+						classes: classes,
+						match: searchText,
+						parent: getParentInfo(element)
+					});
+				}
+			}
+		}
+
+		return results;
+	}`
+
+	result, err := b.page.Context(ctx).Eval(jsCode, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search text contains: %w", err)
+	}
+
+	var rawResults []map[string]interface{}
+	if err := result.Value.Unmarshal(&rawResults); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal contains search results: %w", err)
+	}
+
+	if len(rawResults) == 0 {
+		return &entity.SearchResult{
+			Type:  "contains",
+			Found: false,
+			Query: query,
+			Count: 0,
+		}, nil
+	}
+
+	return b.convertToSearchResult("contains", query, rawResults), nil
+}
+
+func (b *BrowserAdapter) searchBySelector(ctx context.Context, selector string, limit int) (*entity.SearchResult, error) {
+	jsCode := `(cssSelector, maxResults) => {
+		function getElementSelector(el) {
+			if (el.id) {
+				return '#' + el.id;
+			} else if (el.className && typeof el.className === 'string') {
+				const classes = el.className.split(' ').filter(c => c && c.length > 0);
+				if (classes.length > 0) {
+					return el.tagName.toLowerCase() + '.' + classes.slice(0, 2).join('.');
+				}
+			}
+			return el.tagName.toLowerCase();
+		}
+
+		function getParentInfo(el) {
+			const parent = el.parentElement;
+			if (!parent || parent.tagName === 'BODY') return null;
+
+			const classes = [];
+			if (parent.className && typeof parent.className === 'string') {
+				classes.push(...parent.className.split(' ').filter(c => c && c.length > 0));
+			}
+
+			return {
+				element: parent.tagName.toLowerCase(),
+				selector: getElementSelector(parent),
+				id: parent.id || '',
+				classes: classes
+			};
+		}
+
+		try {
+			const elements = document.querySelectorAll(cssSelector);
+			const results = [];
+
+			for (let i = 0; i < Math.min(elements.length, maxResults); i++) {
+				const el = elements[i];
+
+				let text = '';
+				for (const child of el.childNodes) {
+					if (child.nodeType === Node.TEXT_NODE) {
+						text += child.nodeValue;
+					}
+				}
+				text = text.trim().substring(0, 200);
+
+				const classes = [];
+				if (el.className && typeof el.className === 'string') {
+					classes.push(...el.className.split(' ').filter(c => c && c.length > 0));
+				}
+
+				const attrs = {};
+				const importantAttrs = ['href', 'src', 'data-testid', 'data-id', 'role', 'aria-label'];
+				for (const attr of importantAttrs) {
+					if (el.hasAttribute(attr)) {
+						attrs[attr] = el.getAttribute(attr);
+					}
+				}
+
+				results.push({
+					element: el.tagName.toLowerCase(),
+					text: text,
+					selector: getElementSelector(el),
+					id: el.id || '',
+					classes: classes,
+					attributes: attrs,
+					parent: getParentInfo(el)
+				});
+			}
+
+			return results;
+		} catch (e) {
+			return [];
+		}
+	}`
+
+	result, err := b.page.Context(ctx).Eval(jsCode, selector, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search by selector: %w", err)
+	}
+
+	var rawResults []map[string]interface{}
+	if err := result.Value.Unmarshal(&rawResults); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal selector search results: %w", err)
+	}
+
+	if len(rawResults) == 0 {
+		return &entity.SearchResult{
+			Type:  "selector",
+			Found: false,
+			Query: selector,
+			Count: 0,
+		}, nil
+	}
+
+	return b.convertToSearchResult("selector", selector, rawResults), nil
+}
+
+func (b *BrowserAdapter) convertToSearchResult(searchType, query string, rawResults []map[string]interface{}) *entity.SearchResult {
+	results := make([]entity.SearchResultItem, 0, len(rawResults))
+
+	for _, raw := range rawResults {
+		item := entity.SearchResultItem{}
+
+		if element, ok := raw["element"].(string); ok {
+			item.Element = element
+		}
+
+		if text, ok := raw["text"].(string); ok {
+			item.Text = text
+		}
+
+		if selector, ok := raw["selector"].(string); ok {
+			item.Selector = selector
+		}
+
+		if id, ok := raw["id"].(string); ok {
+			item.ID = id
+		}
+
+		if classes, ok := raw["classes"].([]interface{}); ok {
+			for _, c := range classes {
+				if class, ok := c.(string); ok {
+					item.Classes = append(item.Classes, class)
+				}
+			}
+		}
+
+		if match, ok := raw["match"].(string); ok {
+			item.Match = match
+		}
+
+		if attrs, ok := raw["attributes"].(map[string]interface{}); ok {
+			item.Attributes = make(map[string]string)
+			for k, v := range attrs {
+				if strVal, ok := v.(string); ok {
+					item.Attributes[k] = strVal
+				}
+			}
+		}
+
+		if parent, ok := raw["parent"].(map[string]interface{}); ok {
+			parentInfo := &entity.ParentInfo{}
+
+			if element, ok := parent["element"].(string); ok {
+				parentInfo.Element = element
+			}
+
+			if selector, ok := parent["selector"].(string); ok {
+				parentInfo.Selector = selector
+			}
+
+			if id, ok := parent["id"].(string); ok {
+				parentInfo.ID = id
+			}
+
+			if classes, ok := parent["classes"].([]interface{}); ok {
+				for _, c := range classes {
+					if class, ok := c.(string); ok {
+						parentInfo.Classes = append(parentInfo.Classes, class)
+					}
+				}
+			}
+
+			item.Parent = parentInfo
+		}
+
+		results = append(results, item)
 	}
 
 	return &entity.SearchResult{
-		Type:    "text",
-		Found:   true,
-		Content: content,
-	}, nil
+		Type:    searchType,
+		Found:   len(results) > 0,
+		Query:   query,
+		Count:   len(results),
+		Results: results,
+	}
 }
 
 func (b *BrowserAdapter) searchByID(ctx context.Context, id string) (*entity.SearchResult, error) {
@@ -1124,8 +1632,8 @@ func (b *BrowserAdapter) validateURL(targetURL string) error {
 	}
 
 	scheme := strings.ToLower(parsedURL.Scheme)
-	if scheme != schemeHTTP && scheme != schemeHTTPS && scheme != "about" {
-		return fmt.Errorf("%w: unsupported scheme %q (only http, https, about allowed)",
+	if scheme != schemeHTTP && scheme != schemeHTTPS && scheme != "about" && scheme != "file" {
+		return fmt.Errorf("%w: unsupported scheme %q (only http, https, about, file allowed)",
 			ErrInvalidURL, scheme)
 	}
 

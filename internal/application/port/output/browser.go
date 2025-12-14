@@ -20,6 +20,7 @@ type BrowserPort interface {
 	GetPageText(ctx context.Context) (string, error)
 	GetUIElements(ctx context.Context) ([]entity.UIElement, error)
 	GetPageContext(ctx context.Context) (*entity.PageContext, error)
+	GetPageStructure(ctx context.Context) (*entity.PageStructure, error)
 	Screenshot(ctx context.Context) (*entity.Screenshot, error)
 	QueryElements(ctx context.Context, req entity.QueryElementsRequest) (*entity.QueryElementsResult, error)
 	Search(ctx context.Context, req entity.SearchRequest) (*entity.SearchResult, error)

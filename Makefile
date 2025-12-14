@@ -1,4 +1,4 @@
-.PHONY: build run test clean install help
+.PHONY: build run test test-integration test-all clean install help
 
 BINARY_NAME=ai-agent
 BUILD_DIR=build
@@ -7,12 +7,14 @@ APP_ENV ?= dev
 
 help:
 	@echo "Доступные команды:"
-	@echo "  make build       - Собрать бинарный файл"
-	@echo "  make run         - Запустить агента в dev режиме (APP_ENV=dev)"
-	@echo "  make run-prod    - Запустить собранный бинарник в prod режиме (APP_ENV=prod)"
-	@echo "  make test        - Запустить тесты (APP_ENV=test)"
-	@echo "  make clean       - Очистить собранные файлы"
-	@echo "  make install     - Установить в \$$GOPATH/bin"
+	@echo "  make build            - Собрать бинарный файл"
+	@echo "  make run              - Запустить агента в dev режиме (APP_ENV=dev)"
+	@echo "  make run-prod         - Запустить собранный бинарник в prod режиме (APP_ENV=prod)"
+	@echo "  make test             - Запустить unit-тесты (быстро, без браузера)"
+	@echo "  make test-integration - Запустить интеграционные тесты (медленно, с браузером)"
+	@echo "  make test-all         - Запустить все тесты"
+	@echo "  make clean            - Очистить собранные файлы"
+	@echo "  make install          - Установить в \$$GOPATH/bin"
 	@echo ""
 	@echo "Переменные окружения:"
 	@echo "  APP_ENV=<env>    - Выбрать окружение (dev/test/prod)"
@@ -31,12 +33,20 @@ run-prod:
 	@APP_ENV=prod $(BUILD_DIR)/$(BINARY_NAME)
 
 test:
-	@echo "Запуск тестов..."
-	@APP_ENV=test go test ./... -v
+	@echo "Запуск unit-тестов..."
+	@APP_ENV=test go test $$(go list ./... | grep -v /test/integration) -v
+
+test-integration:
+	@echo "Запуск интеграционных тестов..."
+	@cd test/integration && APP_ENV=test go test -v -timeout 5m
+
+test-all:
+	@echo "Запуск всех тестов..."
+	@APP_ENV=test go test ./... -v -timeout 10m
 
 test-coverage:
-	@echo "Запуск тестов с покрытием..."
-	@APP_ENV=test go test ./... -coverprofile=coverage.out
+	@echo "Запуск unit-тестов с покрытием..."
+	@APP_ENV=test go test $$(go list ./... | grep -v /test/integration) -coverprofile=coverage.out
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "✓ Отчет о покрытии: coverage.html"
 

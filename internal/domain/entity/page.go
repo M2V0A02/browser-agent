@@ -51,13 +51,36 @@ type ElementData struct {
 type SearchRequest struct {
 	Type  string `json:"type"`
 	Query string `json:"query"`
+	Limit int    `json:"limit"` // optional limit for results
 }
 
 type SearchResult struct {
 	Type     string
 	Found    bool
+	Query    string
+	Count    int
+	Results  []SearchResultItem
+	// Deprecated: use Results instead
 	Content  string
 	Elements []SearchElement
+}
+
+type SearchResultItem struct {
+	Element    string            `json:"element"`     // tag name (div, section, h2, etc.)
+	Text       string            `json:"text"`        // text content
+	Selector   string            `json:"selector"`    // CSS selector to access element
+	ID         string            `json:"id,omitempty"` // element ID if present
+	Classes    []string          `json:"classes,omitempty"` // element classes if present
+	Attributes map[string]string `json:"attributes,omitempty"` // key attributes
+	Parent     *ParentInfo       `json:"parent,omitempty"` // parent element info
+	Match      string            `json:"match,omitempty"` // what exactly matched (for contains search)
+}
+
+type ParentInfo struct {
+	Element  string   `json:"element"`
+	Selector string   `json:"selector"`
+	ID       string   `json:"id,omitempty"`
+	Classes  []string `json:"classes,omitempty"`
 }
 
 type SearchElement struct {
@@ -65,6 +88,24 @@ type SearchElement struct {
 	Selector   string
 	TagName    string
 	Text       string
+	Attributes map[string]string
+}
+
+// PageStructure represents semantic page structure
+type PageStructure struct {
+	URL      string
+	Title    string
+	Elements []StructureElement
+}
+
+type StructureElement struct {
+	TagName    string
+	Selector   string
+	ID         string
+	Classes    []string
+	Text       string // first 100 chars
+	Level      int    // nesting level for tree display
+	Children   int    // number of children
 	Attributes map[string]string
 }
 

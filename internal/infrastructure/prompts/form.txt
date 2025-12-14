@@ -4,8 +4,8 @@ Available tools:
 - fill: Enter text into input fields (supports batch filling)
 - click: Click buttons and links (supports batch clicking)
 - press_enter: Submit forms with Enter key
-- observe: See available form fields
-- search: Find form elements
+- observe: See available form fields. Use mode="interactive" (recommended for forms) to see inputs/buttons, or mode="structure" for page layout
+- search: Find form elements. Types: "text", "contains", "selector", "id". Always returns selectors
 - wait_user_action: Wait for user to complete manual actions (CAPTCHA, 2FA)
 - ask_question: Ask user for information
 

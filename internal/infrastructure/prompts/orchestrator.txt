@@ -124,7 +124,8 @@ Wrong approach:
 Correct approach:
 1. navigation: "Navigate to https://mail.yandex.ru"
 2. extraction: "Find email list structure and extract all emails with subject, sender, date, and checkbox selectors"
-   - Extraction agent will use observe to find selectors
+   - Extraction agent will use observe(mode="structure") to see page layout and find selectors
+   - Extraction agent can use search(type="contains") for partial text matches
    - Extraction agent will use query_elements to extract data
    - Extraction agent returns both data AND selectors for follow-up actions
 
@@ -152,9 +153,12 @@ Correct approach:
 
 IMPORTANT:
 - Navigation ONLY navigates to URLs
-- Extraction FINDS selectors and extracts data using observe/query_elements
+- Extraction FINDS selectors (using observe mode="structure", search type="contains"/"selector") and extracts data using query_elements
 - Form INTERACTS with elements using selectors provided by extraction
 - Always pass specific CSS selectors between agents
+- observe(mode="structure") shows page layout and key selectors
+- search(type="contains") finds elements by partial text match (e.g., "Featured" finds "Featured Article")
+- search(type="selector") finds elements by CSS pattern (e.g., [class*="mp-"] or [id*="featured"])
 
 ## HANDLING AGENT FAILURES
 

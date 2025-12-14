@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Page for Browser Automation</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .featured-article { background: #f0f0f0; padding: 20px; margin: 20px 0; }
+        .product-card { border: 1px solid #ddd; padding: 10px; margin: 10px 0; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <header id="site-header">
+        <nav class="main-navigation">
+            <a href="/home">Home</a>
+            <a href="/about">About</a>
+            <a href="/contact">Contact</a>
+        </nav>
+    </header>
+
+    <main id="main-content">
+        <section id="mp-tfp" class="featured-article main-section">
+            <h2 class="section-header">Featured Article</h2>
+            <div class="article-content">
+                <h3>Black Emu</h3>
+                <p>The Black Emu is a large flightless bird native to Australia. It is the second-largest living bird by height.</p>
+                <a href="/wiki/Black_Emu" class="read-more">Read more</a>
+            </div>
+        </section>
+
+        <section id="products-section" class="product-listing">
+            <h2>Product Catalog</h2>
+            <div class="product-card" data-product-id="1">
+                <h3 class="product-name">Laptop Pro 15</h3>
+                <p class="product-price">$1,299</p>
+                <span class="product-status">In Stock</span>
+                <button class="add-to-cart">Add to Cart</button>
+            </div>
+            <div class="product-card" data-product-id="2">
+                <h3 class="product-name">Wireless Mouse</h3>
+                <p class="product-price">$29.99</p>
+                <span class="product-status">Out of Stock</span>
+                <button class="add-to-cart" disabled>Add to Cart</button>
+            </div>
+            <div class="product-card" data-product-id="3">
+                <h3 class="product-name">USB-C Cable</h3>
+                <p class="product-price">$15.99</p>
+                <span class="product-status">In Stock</span>
+                <button class="add-to-cart">Add to Cart</button>
+            </div>
+        </section>
+
+        <section id="contact-form" class="form-section">
+            <h2>Contact Form</h2>
+            <form id="contact-form-element">
+                <div>
+                    <label for="name-input">Name:</label>
+                    <input type="text" id="name-input" name="name" placeholder="Enter your name">
+                </div>
+                <div>
+                    <label for="email-input">Email:</label>
+                    <input type="email" id="email-input" name="email" placeholder="Enter your email">
+                </div>
+                <div>
+                    <label for="message-input">Message:</label>
+                    <textarea id="message-input" name="message" rows="4" placeholder="Enter your message"></textarea>
+                </div>
+                <button type="submit" id="submit-button">Submit</button>
+                <button type="button" id="cancel-button">Cancel</button>
+            </form>
+        </section>
+
+        <section id="newsletter" class="newsletter-section mp-newsletter">
+            <h2>Newsletter Signup</h2>
+            <p>Subscribe to our newsletter for updates</p>
+            <input type="email" class="newsletter-email" placeholder="Your email">
+            <button class="newsletter-submit">Subscribe</button>
+        </section>
+    </main>
+
+    <aside id="sidebar" class="sidebar-widget">
+        <h3>Related Links</h3>
+        <ul>
+            <li><a href="/link1">Related Article 1</a></li>
+            <li><a href="/link2">Related Article 2</a></li>
+            <li><a href="/link3">Related Article 3</a></li>
+        </ul>
+    </aside>
+
+    <footer id="site-footer">
+        <p>&copy; 2025 Test Page. All rights reserved.</p>
+    </footer>
+
+    <!-- Hidden element for testing -->
+    <div class="hidden" id="hidden-content">
+        This should not be visible
+    </div>
+</body>
+</html>

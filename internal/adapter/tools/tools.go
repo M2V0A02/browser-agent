@@ -417,23 +417,69 @@ func NewObserveTool(browser output.BrowserPort, logger output.LoggerPort) *Obser
 
 func (t *ObserveTool) Name() entity.ToolName { return entity.ToolBrowserObserve }
 func (t *ObserveTool) Description() string {
-	return "Observe the current state of the page to understand what you are looking at. Returns comprehensive information: current URL, page title, all visible interactive elements (buttons, links, inputs) with their text and selectors, and a preview of the page's text content. Use this tool when you need to understand the page context, after navigation, after scrolling, or when you're unsure what elements are available. This is your primary tool for situational awareness - it tells you what you can see and interact with on the current page."
+	return "Observe the current state of the page. Three modes: 1) 'interactive' (default) - shows interactive elements (buttons, links, inputs); 2) 'structure' - shows semantic page structure (sections, headers, key divs with IDs) - USE THIS to understand page layout and find element selectors; 3) 'full' - combines both. Use 'structure' mode when you need to find selectors for content blocks, articles, or specific page sections."
 }
 func (t *ObserveTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
-		"type":       "object",
-		"properties": map[string]interface{}{},
-		"required":   []string{},
+		"type": "object",
+		"properties": map[string]interface{}{
+			"mode": map[string]interface{}{
+				"type":        "string",
+				"enum":        []string{"interactive", "structure", "full"},
+				"description": "Observation mode: 'interactive' for buttons/links/inputs, 'structure' for page layout and content sections, 'full' for both",
+				"default":     "structure",
+			},
+			"limit": map[string]interface{}{
+				"type":        "number",
+				"description": "Maximum elements to return (default: 50)",
+				"default":     50,
+			},
+		},
+		"required": []string{},
 	}
 }
 
 func (t *ObserveTool) Execute(ctx context.Context, args string) (string, error) {
+	var input struct {
+		Mode  string  `json:"mode"`
+		Limit float64 `json:"limit"`
+	}
+
+	// Set defaults
+	input.Mode = "structure"
+	input.Limit = 50
+
+	if args != "" && args != "{}" {
+		if err := json.Unmarshal([]byte(args), &input); err != nil {
+			return "", fmt.Errorf("invalid arguments: %w", err)
+		}
+	}
+
+	if input.Mode == "" {
+		input.Mode = "structure"
+	}
+
+	switch input.Mode {
+	case "interactive":
+		return t.observeInteractive(ctx)
+	case "structure":
+		return t.observeStructure(ctx, int(input.Limit))
+	case "full":
+		interactive, _ := t.observeInteractive(ctx)
+		structure, _ := t.observeStructure(ctx, int(input.Limit))
+		return interactive + "\n\n" + structure, nil
+	default:
+		return "", fmt.Errorf("invalid mode: %s (must be 'interactive', 'structure', or 'full')", input.Mode)
+	}
+}
+
+func (t *ObserveTool) observeInteractive(ctx context.Context) (string, error) {
 	pageCtx, err := t.browser.GetPageContext(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	result := fmt.Sprintf(`PAGE OBSERVATION:
+	result := fmt.Sprintf(`PAGE OBSERVATION (Interactive Mode):
 
 URL: %s
 Title: %s
@@ -454,6 +500,97 @@ INTERACTIVE ELEMENTS:
 	}
 
 	result += fmt.Sprintf("\nPAGE CONTENT PREVIEW:\n%s\n", pageCtx.TextContent)
+
+	return result, nil
+}
+
+func (t *ObserveTool) observeStructure(ctx context.Context, limit int) (string, error) {
+	structure, err := t.browser.GetPageStructure(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	if limit <= 0 {
+		limit = 50
+	}
+
+	result := fmt.Sprintf(`PAGE STRUCTURE:
+
+URL: %s
+Title: %s
+
+SEMANTIC STRUCTURE:
+`, structure.URL, structure.Title)
+
+	count := 0
+	for _, el := range structure.Elements {
+		if count >= limit {
+			result += fmt.Sprintf("\n... and %d more elements (use limit parameter to see more)\n", len(structure.Elements)-limit)
+			break
+		}
+
+		// Create indentation based on level
+		indent := ""
+		for i := 0; i < el.Level; i++ {
+			indent += "  "
+		}
+
+		// Format element
+		elementStr := fmt.Sprintf("%s<%s>", indent, el.TagName)
+
+		// Add ID if present
+		if el.ID != "" {
+			elementStr += fmt.Sprintf(" #%s", el.ID)
+		}
+
+		// Add key classes (max 2)
+		if len(el.Classes) > 0 {
+			classStr := ""
+			maxClasses := 2
+			if len(el.Classes) < maxClasses {
+				maxClasses = len(el.Classes)
+			}
+			for i := 0; i < maxClasses; i++ {
+				classStr += "." + el.Classes[i]
+			}
+			elementStr += classStr
+		}
+
+		// Add text preview if present
+		if el.Text != "" {
+			textPreview := el.Text
+			if len(textPreview) > 50 {
+				textPreview = textPreview[:50] + "..."
+			}
+			elementStr += fmt.Sprintf(": \"%s\"", textPreview)
+		}
+
+		// Add selector
+		elementStr += fmt.Sprintf(" [%s]", el.Selector)
+
+		result += elementStr + "\n"
+		count++
+	}
+
+	result += "\nKEY SELECTORS (use these in search/query/click/fill tools):\n"
+	selectorCount := 0
+	for _, el := range structure.Elements {
+		if selectorCount >= 10 {
+			break
+		}
+		if el.ID != "" || (len(el.Classes) > 0 && (el.TagName == "section" || el.TagName == "div" || el.TagName == "main" || el.TagName == "article")) {
+			desc := el.TagName
+			if el.Text != "" {
+				textPreview := el.Text
+				if len(textPreview) > 30 {
+					textPreview = textPreview[:30] + "..."
+				}
+				desc += fmt.Sprintf(": \"%s\"", textPreview)
+			}
+			result += fmt.Sprintf("- %s → %s\n", desc, el.Selector)
+			selectorCount++
+		}
+	}
 
 	return result, nil
 }
@@ -557,7 +694,7 @@ func NewSearchTool(browser output.BrowserPort, logger output.LoggerPort) *Search
 
 func (t *SearchTool) Name() entity.ToolName { return entity.ToolBrowserSearch }
 func (t *SearchTool) Description() string {
-	return "Search for information on the page. Three search types: 1) 'text' - finds text content and returns up to 1000 characters with context; 2) 'id' - finds elements by id (or partial id match) and returns element type, text content, selector, and key attributes; 3) 'attribute' - finds elements by attribute name/value and returns same detailed info. Returns rich context including element type, visible text, and important attributes to help you understand what each element is and how to interact with it."
+	return "Search for elements on the page. ALWAYS returns selectors for found elements. Four search types: 1) 'text' - exact text match, returns elements with selector and parent info; 2) 'contains' - partial text match (e.g., 'Избранная' finds 'Избранная статья'); 3) 'selector' - CSS selector with wildcard support (e.g., '[class*=\"featured\"]'); 4) 'id' - search by element ID. All types return JSON with element info, selector for interaction, and parent context. Use 'contains' when you're not sure of exact text. Use 'selector' to find elements by class/attribute patterns."
 }
 func (t *SearchTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
@@ -565,12 +702,17 @@ func (t *SearchTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"type": map[string]interface{}{
 				"type":        "string",
-				"enum":        []string{"text", "id", "attribute"},
-				"description": "Search type: 'text' (search for text content), 'id' (search by element id), 'attribute' (search by attribute)",
+				"enum":        []string{"text", "contains", "selector", "id"},
+				"description": "Search type: 'text' (exact text), 'contains' (partial text), 'selector' (CSS selector with wildcards), 'id' (element ID)",
 			},
 			"query": map[string]interface{}{
 				"type":        "string",
-				"description": "Search query. For 'text' - text to find. For 'id' - id or partial id. For 'attribute' - attribute name or 'name=value' format",
+				"description": "Search query. For 'text'/'contains' - text to find. For 'selector' - CSS selector (e.g., '[class*=\"mp-\"]', '#main > div'). For 'id' - element ID",
+			},
+			"limit": map[string]interface{}{
+				"type":        "number",
+				"description": "Maximum results to return (default: 10, max: 50)",
+				"default":     10,
 			},
 		},
 		"required": []string{"type", "query"},
@@ -591,6 +733,13 @@ func (t *SearchTool) Execute(ctx context.Context, args string) (string, error) {
 		return "", fmt.Errorf("query is required")
 	}
 
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+	if req.Limit > 50 {
+		req.Limit = 50
+	}
+
 	result, err := t.browser.Search(ctx, req)
 	if err != nil {
 		return "", err
@@ -601,9 +750,24 @@ func (t *SearchTool) Execute(ctx context.Context, args string) (string, error) {
 
 func formatSearchResult(result *entity.SearchResult) string {
 	if !result.Found {
-		return fmt.Sprintf("No results found for %s search", result.Type)
+		return fmt.Sprintf("No results found for %s search: \"%s\"", result.Type, result.Query)
 	}
 
+	// Use new Results format if available
+	if len(result.Results) > 0 {
+		jsonBytes, err := json.MarshalIndent(map[string]interface{}{
+			"type":  result.Type,
+			"query": result.Query,
+			"found": result.Count,
+			"results": result.Results,
+		}, "", "  ")
+		if err != nil {
+			return fmt.Sprintf("Error formatting results: %v", err)
+		}
+		return string(jsonBytes)
+	}
+
+	// Fallback to old format for backward compatibility
 	switch result.Type {
 	case "text":
 		return fmt.Sprintf("Found text:\n\n%s", result.Content)
